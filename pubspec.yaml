@@ -1,7 +1,20 @@
 name: gameframework
-description: "A new Flutter plugin project."
-version: 0.0.1
-homepage:
+description: A unified, modular framework for embedding multiple game engines (Unity, Unreal Engine) into Flutter applications with bidirectional communication and lifecycle management.
+version: 0.4.0
+homepage: https://github.com/xraph/flutter-game-framework
+repository: https://github.com/xraph/flutter-game-framework
+issue_tracker: https://github.com/xraph/flutter-game-framework/issues
+documentation: https://github.com/xraph/flutter-game-framework#readme
+
+topics:
+  - game-engine
+  - unity
+  - unreal-engine
+  - game-development
+  - native-integration
+  - plugin
+  - ar
+  - augmented-reality
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
