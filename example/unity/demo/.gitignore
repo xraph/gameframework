@@ -1,0 +1,19 @@
+# Unity demo project ignore patterns
+
+# Unity projects
+*/[Ll]ibrary/
+*/[Tt]emp/
+*/[Oo]bj/
+*/[Bb]uild/
+*/[Bb]uilds/
+*/[Ll]ogs/
+*/[Uu]ser[Ss]ettings/
+*/[Mm]emoryCaptures/
+
+# Exports from game CLI
+Exports/
+*/Exports/
+
+# OS files
+.DS_Store
+Thumbs.db

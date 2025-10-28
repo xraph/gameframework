@@ -54,6 +54,8 @@ Commands:
   example       Run example app
   build:android Build example for Android
   build:ios     Build example for iOS
+  install:cli   Install game CLI globally for local development
+  uninstall:cli Uninstall game CLI
   help          Show this help message
 
 Examples:
@@ -297,6 +299,68 @@ cmd_build_ios() {
     cd ..
 }
 
+cmd_install_cli() {
+    print_header "Installing Game CLI for Local Development"
+
+    # Get absolute path to CLI directory
+    CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../cli" && pwd)"
+
+    if [ ! -d "$CLI_DIR" ]; then
+        print_error "CLI directory not found at: $CLI_DIR"
+        exit 1
+    fi
+
+    echo "Installing dependencies..."
+    cd "$CLI_DIR"
+    dart pub get
+
+    echo ""
+    echo "Activating game CLI globally from local path..."
+    dart pub global activate --source path "$CLI_DIR"
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        print_success "Game CLI installed successfully!"
+        echo ""
+        print_warning "Make sure your PATH includes the Dart global bin directory:"
+
+        # Check OS and provide appropriate path instructions
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "  export PATH=\"\$PATH\":\"\$HOME/.pub-cache/bin\""
+            echo ""
+            echo "Add this to your ~/.zshrc or ~/.bash_profile"
+        elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            echo "  export PATH=\"\$PATH\":\"\$HOME/.pub-cache/bin\""
+            echo ""
+            echo "Add this to your ~/.bashrc or ~/.zshrc"
+        elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+            echo "  %LOCALAPPDATA%\\Pub\\Cache\\bin"
+            echo ""
+            echo "Add this to your Windows PATH environment variable"
+        fi
+
+        echo ""
+        print_success "You can now use 'game' command from anywhere!"
+        echo ""
+        echo "Try: game --help"
+    else
+        print_error "Failed to install game CLI"
+        exit 1
+    fi
+}
+
+cmd_uninstall_cli() {
+    print_header "Uninstalling Game CLI"
+
+    dart pub global deactivate game_cli
+
+    if [ $? -eq 0 ]; then
+        print_success "Game CLI uninstalled successfully!"
+    else
+        print_warning "Game CLI may not have been installed"
+    fi
+}
+
 # Main command dispatcher
 case "${1:-help}" in
     setup)
@@ -340,6 +404,12 @@ case "${1:-help}" in
         ;;
     build:ios)
         cmd_build_ios
+        ;;
+    install:cli)
+        cmd_install_cli
+        ;;
+    uninstall:cli)
+        cmd_uninstall_cli
         ;;
     help|--help|-h)
         cmd_help
