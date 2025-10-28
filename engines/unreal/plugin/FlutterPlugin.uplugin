@@ -1,0 +1,31 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.5.0",
+	"FriendlyName": "Flutter Bridge Plugin",
+	"Description": "Enables bidirectional communication between Flutter and Unreal Engine",
+	"Category": "Networking",
+	"CreatedBy": "xraph",
+	"CreatedByURL": "https://github.com/xraph/flutter-game-framework",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "https://github.com/xraph/flutter-game-framework/issues",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "FlutterPlugin",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault",
+			"PlatformAllowList": [
+				"Win64",
+				"Mac",
+				"Linux",
+				"IOS",
+				"Android"
+			]
+		}
+	]
+}

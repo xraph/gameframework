@@ -1,0 +1,46 @@
+name: gameframework_unreal
+description: Unreal Engine plugin for Flutter Game Framework. Provides Unreal Engine 5.x integration with bidirectional communication, quality settings, and console command execution.
+version: 0.5.0
+homepage: https://github.com/xraph/flutter-game-framework
+repository: https://github.com/xraph/flutter-game-framework
+issue_tracker: https://github.com/xraph/flutter-game-framework/issues
+documentation: https://github.com/xraph/flutter-game-framework/tree/main/engines/unreal/dart#readme
+
+topics:
+  - game-engine
+  - unreal-engine
+  - game-development
+  - ue5
+  - quality-settings
+  - console-commands
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # For development, use path:
+  gameframework:
+    path: ../../../
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.xraph.gameframework.unreal
+        pluginClass: UnrealEnginePlugin
+      ios:
+        pluginClass: UnrealEnginePlugin
+      macos:
+        pluginClass: UnrealEnginePlugin
+      windows:
+        pluginClass: UnrealEnginePlugin
+      linux:
+        pluginClass: UnrealEnginePlugin
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
