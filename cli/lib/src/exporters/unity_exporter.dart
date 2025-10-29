@@ -190,6 +190,13 @@ class UnityExporter {
   }) async {
     logger.info('Building Unity project...');
 
+    // Remove lock file if it exists (prevents "another instance running" error)
+    final lockFile = File(path.join(projectPath, 'Temp', 'UnityLockfile'));
+    if (await lockFile.exists()) {
+      logger.detail('Removing Unity lock file...');
+      await lockFile.delete();
+    }
+
     final buildMethod = _getBuildMethod(platform);
     final buildTarget = _getBuildTarget(platform);
 
@@ -200,15 +207,46 @@ class UnityExporter {
       '-executeMethod', buildMethod,
       '-buildTarget', buildTarget,
       '-buildPath', exportPath,
+      '-logFile', '-', // Log to stdout
     ];
 
     if (development) {
       args.add('-development');
     }
 
+    // Pass scenes from config if specified
+    if (config.exportSettings?.scenes != null && config.exportSettings!.scenes!.isNotEmpty) {
+      final scenesArg = config.exportSettings!.scenes!.join(',');
+      args.addAll(['-buildScenes', scenesArg]);
+      logger.detail('Building with scenes: $scenesArg');
+    }
+
+    // Pass build configuration if specified
+    if (config.exportSettings?.buildConfiguration != null) {
+      args.addAll(['-buildConfiguration', config.exportSettings!.buildConfiguration!]);
+      logger.detail('Build configuration: ${config.exportSettings!.buildConfiguration}');
+    }
+
+    logger.detail('Unity command: $unityPath ${args.join(' ')}');
+
     try {
       final result = await shell.run('$unityPath ${args.join(' ')}');
-      return result.first.exitCode == 0;
+      final exitCode = result.first.exitCode;
+
+      if (exitCode == 0) {
+        logger.success('Unity build completed successfully');
+        return true;
+      } else {
+        logger.error('Unity build failed with exit code: $exitCode');
+
+        // Provide helpful error messages based on exit code
+        if (exitCode == -6) {
+          logger.error('Unity crashed during build. Check Unity log for details.');
+          logger.hint('Unity log location: ~/Library/Logs/Unity/Editor.log (macOS)');
+        }
+
+        return false;
+      }
     } catch (e) {
       logger.error('Build error: $e');
       return false;
@@ -291,7 +329,8 @@ class UnityExporter {
 
   String _getBuildMethod(String platform) {
     // Unity build method (requires custom Unity Editor script)
-    return 'FlutterBuildScript.Build${_capitalize(platform)}';
+    // Must include full namespace path
+    return 'Xraph.GameFramework.Unity.Editor.FlutterBuildScript.Build${_capitalize(platform)}';
   }
 
   String _getBuildTarget(String platform) {
