@@ -1,0 +1,63 @@
+group 'com.xraph.gameframework.unity'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.1.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.xraph.gameframework.unity'
+    compileSdkVersion 34
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime:2.6.1'
+
+    // Unity Player classes - needed for compilation
+    // The actual unityLibrary will be linked at the app level
+    // Support both nested (unityLibrary/unityLibrary) and root-level (unityLibrary) structures
+    def nestedUnityJar = new File(projectDir, '../../../../example/android/unityLibrary/unityLibrary/libs/unity-classes.jar')
+    def rootUnityJar = new File(projectDir, '../../../../example/android/unityLibrary/libs/unity-classes.jar')
+
+    if (nestedUnityJar.exists()) {
+        compileOnly files(nestedUnityJar.absolutePath)
+    } else if (rootUnityJar.exists()) {
+        compileOnly files(rootUnityJar.absolutePath)
+    }
+}

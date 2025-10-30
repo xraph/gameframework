@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:gameframework/gameframework.dart';
-// Uncomment when Unity plugin is ready:
-// import 'package:gameframework_unity/gameframework_unity.dart';
+import 'package:gameframework_unity/gameframework_unity.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize engine plugins
-  // Uncomment when Unity plugin is ready:
-  // UnityEnginePlugin.initialize();
+  UnityEnginePlugin.initialize();
 
   runApp(const MyApp());
 }
@@ -166,55 +164,13 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
             ),
           ),
 
-          // Game view (placeholder)
+          // Game view
           Expanded(
-            child: Container(
-              color: Colors.grey.shade200,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.games_outlined,
-                      size: 100,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Unity Game View',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 40),
-                      child: Text(
-                        'Export your Unity project and integrate it here.\nSee the documentation for setup instructions.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Uncomment when Unity is integrated:
-                    /*
-                    GameWidget(
-                      engineType: GameEngineType.unity,
-                      onEngineCreated: _onEngineCreated,
-                      onMessage: _onMessage,
-                      onSceneLoaded: _onSceneLoaded,
-                      config: const GameEngineConfig(
-                        fullscreen: false,
-                        runImmediately: true,
-                        unloadOnDispose: true,
-                      ),
-                    ),
-                    */
-                  ],
-                ),
-              ),
+            child: GameWidget(
+              engineType: GameEngineType.unity,
+              onEngineCreated: _onEngineCreated,
+              onMessage: _onMessage,
+              onSceneLoaded: _onSceneLoaded,
             ),
           ),
 

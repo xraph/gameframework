@@ -110,6 +110,20 @@ public class RotateExample : MonoBehaviour
     {
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex + 1);
     }
+
+    public void StartGame(string sceneName)
+    {
+        string currentScene = SceneManager.GetActiveScene().name;
+        if (sceneName == "level0")
+        {
+            currentScene = "MenuScene";
+        }
+        else if (sceneName == "level1")
+        {
+            currentScene = "GameScene";
+        }
+        SceneManager.LoadScene(currentScene);
+    }
     
     public void ChangeScene(string sceneName)
     {

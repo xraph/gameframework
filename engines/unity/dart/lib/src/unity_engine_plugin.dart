@@ -58,9 +58,3 @@ class UnityEngineFactory implements GameEngineFactory {
     return platform.createUnityController(viewId, config);
   }
 }
-
-/// Platform-specific controller creation
-GameEngineController createUnityController(int viewId, GameEngineConfig config) {
-  // This will be replaced by the platform-specific import
-  return UnityController(viewId);
-}

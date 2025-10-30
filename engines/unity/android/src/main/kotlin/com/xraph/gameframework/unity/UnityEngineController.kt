@@ -66,6 +66,9 @@ class UnityEngineController(
             unityPlayer?.let { player ->
                 if (player.parent == null) {
                     container.addView(player)
+                    player.bringToFront()
+                    player.requestLayout()
+                    player.invalidate()
                     sendEventToFlutter("onAttached", null)
                 }
             }
@@ -131,7 +134,10 @@ class UnityEngineController(
                 // Send message to Unity using UnitySendMessage
                 UnityPlayer.UnitySendMessage(target, method, data)
             } catch (e: Exception) {
-                sendEventToFlutter("onError", mapOf("message" to "Failed to send message: ${e.message}"))
+                sendEventToFlutter(
+                    "onError",
+                    mapOf("message" to "Failed to send message: ${e.message}")
+                )
             }
         }
     }
@@ -155,24 +161,28 @@ class UnityEngineController(
      * Called from Unity when a message is sent to Flutter
      */
     fun onUnityMessage(target: String, method: String, data: String) {
-        sendEventToFlutter("onMessage", mapOf(
-            "target" to target,
-            "method" to method,
-            "data" to data
-        ))
+        sendEventToFlutter(
+            "onMessage", mapOf(
+                "target" to target,
+                "method" to method,
+                "data" to data
+            )
+        )
     }
 
     /**
      * Called from Unity when a scene is loaded
      */
     fun onUnitySceneLoaded(name: String, buildIndex: Int) {
-        sendEventToFlutter("onSceneLoaded", mapOf(
-            "name" to name,
-            "buildIndex" to buildIndex,
-            "isLoaded" to true,
-            "isValid" to true,
-            "metadata" to emptyMap<String, Any>()
-        ))
+        sendEventToFlutter(
+            "onSceneLoaded", mapOf(
+                "name" to name,
+                "buildIndex" to buildIndex,
+                "isLoaded" to true,
+                "isValid" to true,
+                "metadata" to emptyMap<String, Any>()
+            )
+        )
     }
 
     // Lifecycle callbacks from DefaultLifecycleObserver

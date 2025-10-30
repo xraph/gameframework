@@ -22,11 +22,13 @@ class UnityController implements GameEngineController {
   UnityController(int viewId)
       : _channel = MethodChannel('com.xraph.gameframework/engine_$viewId'),
         _eventChannel = EventChannel('com.xraph.gameframework/events_$viewId') {
-    _setupEventStream();
+    // Delay event stream setup to allow platform view to be created first
+    Future.delayed(const Duration(milliseconds: 100), _setupEventStream);
   }
 
   void _setupEventStream() {
-    _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
+    try {
+      _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
       (dynamic event) {
         if (event is Map) {
           final eventName = event['event'] as String?;
@@ -119,6 +121,10 @@ class UnityController implements GameEngineController {
         ));
       },
     );
+    } catch (e) {
+      // Log error but don't crash - the stream might not be ready yet
+      print('Failed to setup event stream: $e');
+    }
   }
 
   @override
@@ -314,4 +320,9 @@ class UnityController implements GameEngineController {
     _sceneLoadController.close();
     _eventController.close();
   }
+}
+
+/// Platform-specific controller creation for mobile/desktop
+GameEngineController createUnityController(int viewId, GameEngineConfig config) {
+  return UnityController(viewId);
 }
