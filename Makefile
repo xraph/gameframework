@@ -33,16 +33,24 @@ setup: ## Initial project setup (install all dependencies)
 install-cli: ## Install game CLI globally for local development
 	@echo "$(BLUE)Installing Game CLI...$(NC)"
 	@cd cli && dart pub get
-	@dart pub global activate --source path cli
+	@mkdir -p $$HOME/.local/bin
+	@cd cli && dart compile exe bin/game.dart -o $$HOME/.local/bin/game
 	@echo ""
 	@echo "$(GREEN)✓ Game CLI installed successfully!$(NC)"
-	@echo "$(YELLOW)⚠ Make sure your PATH includes: $$HOME/.pub-cache/bin$(NC)"
+	@echo "$(YELLOW)⚠ Make sure your PATH includes: $$HOME/.local/bin$(NC)"
+	@echo ""
+	@if echo "$$PATH" | grep -q "$$HOME/.local/bin"; then \
+		echo "$(GREEN)✓ PATH is already configured$(NC)"; \
+	else \
+		echo "$(YELLOW)Add to your ~/.zshrc or ~/.bashrc:$(NC)"; \
+		echo "  export PATH=\"\$$HOME/.local/bin:\$$PATH\""; \
+	fi
 	@echo ""
 	@echo "Try: game --help"
 
 uninstall-cli: ## Uninstall game CLI
 	@echo "$(BLUE)Uninstalling Game CLI...$(NC)"
-	@dart pub global deactivate game_cli
+	@rm -f $$HOME/.local/bin/game
 	@echo "$(GREEN)✓ Game CLI uninstalled$(NC)"
 
 ##@ Development
@@ -145,6 +153,11 @@ build-ios: ## Build example for iOS (macOS only)
 	fi
 
 ##@ CLI Development
+
+cli-rebuild: ## Rebuild and reinstall CLI after changes
+	@echo "$(BLUE)Rebuilding CLI...$(NC)"
+	@cd cli && dart compile exe bin/game.dart -o $$HOME/.local/bin/game
+	@echo "$(GREEN)✓ CLI rebuilt successfully!$(NC)"
 
 cli-test: ## Run CLI tests
 	@echo "$(BLUE)Running CLI tests...$(NC)"

@@ -34,7 +34,7 @@ namespace Xraph.GameFramework.Unity.Editor
             Info
         }
 
-        [MenuItem("Flutter/Validate Project")]
+        [MenuItem("Game Framework/Validate Project")]
         public static void ShowWindow()
         {
             var window = GetWindow<FlutterProjectValidator>("Flutter Validator");

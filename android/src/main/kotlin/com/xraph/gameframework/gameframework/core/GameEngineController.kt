@@ -1,13 +1,17 @@
 package com.xraph.gameframework.gameframework.core
 
+import android.app.Activity
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.util.Log
+import android.graphics.Color
 import android.widget.FrameLayout
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
@@ -17,30 +21,61 @@ import io.flutter.plugin.platform.PlatformView
  *
  * Provides common functionality and defines the contract for engine-specific implementations.
  * Engine plugins (Unity, Unreal, etc.) should extend this class.
+ *
+ * Architecture Note (FUW Pattern):
+ * Following flutter-unity-view-widget's proven pattern, Activity must be passed separately
+ * from Context. The Activity comes from onAttachedToActivity (the ONLY proper way to get it
+ * in Flutter plugins) and is stored in GameEngineRegistry. Controllers receive both:
+ * - context: For general Android operations (resources, inflater, etc.)
+ * - activity: For engine-specific operations requiring Activity (window, lifecycle, etc.)
+ *
+ * This separation is critical because:
+ * 1. Context might not be an Activity (could be Application context)
+ * 2. Activity lifecycle is managed separately by Flutter
+ * 3. Engines (Unity, Unreal) require explicit Activity reference
  */
 abstract class GameEngineController(
     protected val context: Context,
+    protected val activity: Activity?,
     protected val viewId: Int,
     protected val messenger: BinaryMessenger,
     protected val lifecycle: Lifecycle,
     protected val config: Map<String, Any?>
-) : PlatformView, DefaultLifecycleObserver, MethodChannel.MethodCallHandler {
+) : PlatformView, DefaultLifecycleObserver, MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
     // Common properties
     protected val methodChannel: MethodChannel
+    protected val eventChannel: EventChannel
     protected val container: FrameLayout
     protected var disposed = false
     protected var engineReady = false
     protected var enginePaused = false
+    
+    private var eventSink: EventChannel.EventSink? = null
+
+    private var eventStreamReady = false
 
     init {
         container = FrameLayout(context)
+        container.setBackgroundColor(Color.TRANSPARENT)
         methodChannel = MethodChannel(
             messenger,
             "com.xraph.gameframework/engine_$viewId"
         )
         methodChannel.setMethodCallHandler(this)
+        
+        // Set up event channel for streaming events to Flutter
+        eventChannel = EventChannel(
+            messenger,
+            "com.xraph.gameframework/events_$viewId"
+        )
+
+        Log.d("GameEngineController", "Created event channel: $viewId")
+        
         lifecycle.addObserver(this)
+        
+        // NOTE: Event handler will be registered when Flutter explicitly requests it
+        // via the 'events#setup' method call. This eliminates race conditions.
     }
 
     // ===== Abstract Methods (Engine-specific) =====
@@ -103,6 +138,12 @@ abstract class GameEngineController(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "events#setup" -> {
+                setupEventStream(result)
+            }
+            "events#isReady" -> {
+                result.success(eventStreamReady)
+            }
             "engine#create" -> {
                 createEngine()
                 result.success(true)
@@ -154,12 +195,46 @@ abstract class GameEngineController(
             }
         }
     }
+    
+    /**
+     * Set up event stream when explicitly requested by Flutter
+     * This eliminates race conditions by ensuring proper sequencing
+     */
+    private fun setupEventStream(result: MethodChannel.Result) {
+        if (eventStreamReady) {
+            Log.d("GameEngineController", "Event stream already set up: $viewId")
+            result.success(true)
+            return
+        }
+        
+        runOnMainThread {
+            try {
+                eventChannel.setStreamHandler(this)
+                eventStreamReady = true
+                Log.d("GameEngineController", "Event stream handler registered: $viewId")
+                result.success(true)
+            } catch (e: Exception) {
+                Log.e("GameEngineController", "Failed to setup event stream: ${e.message}", e)
+                result.error("SETUP_FAILED", "Failed to setup event stream: ${e.message}", null)
+            }
+        }
+    }
+
+    // ===== EventChannel.StreamHandler Methods =====
+    
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        eventSink = events
+    }
+    
+    override fun onCancel(arguments: Any?) {
+        eventSink = null
+    }
 
     // ===== Lifecycle Methods =====
 
     override fun onCreate(owner: LifecycleOwner) {
         onEngineCreate()
-    }
+}
 
     override fun onResume(owner: LifecycleOwner) {
         if (!disposed && engineReady) {
@@ -195,6 +270,8 @@ abstract class GameEngineController(
         if (disposed) return
 
         methodChannel.setMethodCallHandler(null)
+        eventChannel.setStreamHandler(null)
+        eventSink = null
         lifecycle.removeObserver(this)
         detachEngineView()
 
@@ -208,11 +285,14 @@ abstract class GameEngineController(
     // ===== Utility Methods =====
 
     /**
-     * Send an event to Flutter
+     * Send an event to Flutter via EventChannel
      */
     protected fun sendEventToFlutter(event: String, data: Any?) {
         runOnMainThread {
-            methodChannel.invokeMethod("events#$event", data)
+            eventSink?.success(mapOf(
+                "event" to event,
+                "data" to data
+            ))
         }
     }
 

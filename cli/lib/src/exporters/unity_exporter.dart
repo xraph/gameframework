@@ -4,6 +4,7 @@ import 'package:process_run/shell.dart';
 import '../../models/game_config.dart';
 import '../utils/file_utils.dart';
 import '../utils/logger.dart';
+import 'ios_framework_builder.dart';
 
 /// Unity engine exporter
 class UnityExporter {
@@ -36,16 +37,23 @@ class UnityExporter {
 
       logger.detail('Using Unity at: $unityPath');
 
-      // Prepare export path
+      // Prepare export path - resolve relative paths to absolute
+      final currentDir = Directory.current.path;
       final exportPath = config.exportPath ?? path.join(config.projectPath, 'Exports');
-      final platformExportPath = path.join(exportPath, _getPlatformExportDir(platform));
+      final platformExportPath = path.isAbsolute(exportPath) 
+          ? path.join(exportPath, _getPlatformExportDir(platform))
+          : path.join(currentDir, exportPath, _getPlatformExportDir(platform));
+      
+      final absoluteProjectPath = path.isAbsolute(config.projectPath)
+          ? config.projectPath
+          : path.join(currentDir, config.projectPath);
 
       await Directory(platformExportPath).create(recursive: true);
 
       // Build Unity project
       final success = await _buildUnityProject(
         unityPath: unityPath,
-        projectPath: config.projectPath,
+        projectPath: absoluteProjectPath,
         platform: platform,
         exportPath: platformExportPath,
         development: config.exportSettings?.development ?? false,
@@ -54,6 +62,32 @@ class UnityExporter {
       if (!success) {
         logger.error('Unity build failed');
         return false;
+      }
+
+      // For iOS, automatically build the UnityFramework
+      if (platform == 'ios') {
+        logger.info('');
+        final frameworkBuilder = IOSFrameworkBuilder(logger: logger);
+        final frameworkSuccess = await frameworkBuilder.buildFramework(
+          unityExportPath: platformExportPath,
+          outputPath: path.join(platformExportPath, 'Framework'),
+          isSimulator: false, // Build device-only by default
+        );
+
+        if (!frameworkSuccess) {
+          logger.warning('Framework build failed');
+          logger.info('');
+          logger.info('You can manually build the framework:');
+          logger.info('  cd $platformExportPath');
+          logger.info('  xcodebuild archive -project Unity-iPhone.xcodeproj \\');
+          logger.info('    -scheme UnityFramework -configuration Release \\');
+          logger.info('    -destination "generic/platform=iOS" \\');
+          logger.info('    -archivePath ./ios.xcarchive \\');
+          logger.info('    IPHONEOS_DEPLOYMENT_TARGET=12.0 \\');
+          logger.info('    BUILD_LIBRARY_FOR_DISTRIBUTION=YES \\');
+          logger.info('    SKIP_INSTALL=NO');
+          logger.info('');
+        }
       }
 
       logger.success('Unity export completed: $platformExportPath');
@@ -277,6 +311,9 @@ class UnityExporter {
 
     // Auto-configure Gradle settings
     await _configureAndroidGradle(target);
+    
+    // Fix gameframework_unity plugin build.gradle
+    await _fixUnityPluginBuildGradle(target);
   }
 
   /// Convert Unity export from application to library
@@ -380,7 +417,8 @@ class UnityExporter {
     content = await buildFile.readAsString();
     if (content.contains('applicationId')) {
       logger.detail('Removing applicationId from library...');
-      content = content.replaceAll(RegExp(r'\s*applicationId\s+["\'][^"\']+["\']\s*\n?'), '');
+      // Match: applicationId "..." or applicationId '...'
+      content = content.replaceAll(RegExp('\\s*applicationId\\s+["\'][^"\']+["\']'), '');
       await buildFile.writeAsString(content);
       logger.success('Removed applicationId');
     }
@@ -538,7 +576,6 @@ class UnityExporter {
 
       // Verify the projectDir is correct for the current structure
       final nestedExists = await Directory(path.join(unityLibraryPath, 'unityLibrary')).exists();
-      final expectedPath = nestedExists ? 'unityLibrary/unityLibrary' : 'unityLibrary';
 
       if (content.contains('unityLibrary/unityLibrary') && !nestedExists) {
         logger.detail('Fixing unityLibrary projectDir path...');
@@ -730,25 +767,56 @@ dependencies {
   Future<void> _syncIOS(String source, String target) async {
     logger.detail('Syncing iOS files...');
 
-    // Copy UnityFramework.framework
-    final framework = path.join(source, 'UnityFramework.framework');
-    if (await Directory(framework).exists()) {
-      await FileUtils.copyDirectory(framework, target);
-      logger.success('Copied UnityFramework.framework to $target');
-    } else {
+    // Check for built framework first
+    var framework = path.join(source, 'Framework', 'UnityFramework.framework');
+    if (!await Directory(framework).exists()) {
+      // Fallback to raw export location
+      framework = path.join(source, 'UnityFramework.framework');
+    }
+    
+    if (!await Directory(framework).exists()) {
+      logger.error('UnityFramework.framework not found');
+      logger.hint('Run "game export unity -p ios" to build the framework first');
       throw Exception('UnityFramework.framework not found in export');
     }
 
-    // Auto-configure iOS integration
-    await _configureIOSIntegration(target);
+    // Copy to plugin directory (where podspec expects it)
+    final pluginIosDir = path.join(
+      path.dirname(path.dirname(path.dirname(Directory.current.path))),
+      'engines/unity/dart/ios'
+    );
+    
+    // Also check relative to current directory if we're in example/
+    String? actualPluginDir;
+    final relativePluginDir = path.join(Directory.current.path, '..', 'engines/unity/dart/ios');
+    
+    if (await Directory(relativePluginDir).exists()) {
+      actualPluginDir = path.normalize(relativePluginDir);
+    } else if (await Directory(pluginIosDir).exists()) {
+      actualPluginDir = pluginIosDir;
+    } else {
+      logger.warning('Could not find Unity plugin iOS directory');
+      // Fall back to copying to target location
+      actualPluginDir = path.dirname(target);
+    }
+
+    final destinationFramework = path.join(actualPluginDir, 'UnityFramework.framework');
+    
+    // Remove old framework if exists
+    if (await Directory(destinationFramework).exists()) {
+      await Directory(destinationFramework).delete(recursive: true);
+    }
+    
+    await FileUtils.copyDirectory(framework, destinationFramework);
+    logger.success('Copied UnityFramework.framework to $actualPluginDir');
+
+    // Auto-configure iOS integration  
+    await _configureIOSIntegration(path.dirname(target));
   }
 
   /// Configure iOS Xcode integration
-  Future<void> _configureIOSIntegration(String frameworkPath) async {
+  Future<void> _configureIOSIntegration(String iosDir) async {
     logger.info('Configuring iOS integration...');
-
-    // Get the ios directory (parent of target path)
-    final iosDir = Directory(frameworkPath).parent.path;
 
     // Configure Podfile
     await _configurePodfile(iosDir);
@@ -757,13 +825,43 @@ dependencies {
     await _configureInfoPlist(iosDir);
 
     logger.success('iOS integration configuration complete');
+    
+    // Run pod install automatically
+    await _runPodInstall(iosDir);
+    
+    logger.info('');
+    logger.success('✅ UnityFramework linked successfully!');
     logger.info('');
     logger.info('Next steps:');
-    logger.info('1. Run: cd ios && pod install');
-    logger.info('2. Open Runner.xcworkspace in Xcode');
-    logger.info('3. Select Runner target > General tab');
-    logger.info('4. Add UnityFramework.framework to "Frameworks, Libraries, and Embedded Content"');
-    logger.info('5. Set "Embed & Sign" for UnityFramework.framework');
+    logger.info('1. Open Runner.xcworkspace in Xcode');
+    logger.info('2. Run the app on an iOS device or simulator');
+    logger.info('');
+    logger.hint('Note: The framework will be automatically embedded when you build');
+  }
+
+  /// Run pod install in iOS directory
+  Future<void> _runPodInstall(String iosDir) async {
+    logger.info('Running pod install...');
+    
+    // Check if Podfile exists
+    if (!await File(path.join(iosDir, 'Podfile')).exists()) {
+      logger.warning('Podfile not found, skipping pod install');
+      return;
+    }
+
+    try {
+      final result = await shell.run('cd "$iosDir" && pod install');
+      
+      if (result.first.exitCode == 0) {
+        logger.success('Pod install completed successfully');
+      } else {
+        logger.warning('Pod install failed, you may need to run it manually');
+        logger.hint('Run: cd ios && pod install');
+      }
+    } catch (e) {
+      logger.warning('Could not run pod install: $e');
+      logger.hint('Run: cd ios && pod install');
+    }
   }
 
   /// Configure Podfile for Unity
@@ -784,39 +882,9 @@ dependencies {
       return;
     }
 
-    logger.detail('Adding UnityFramework configuration to Podfile...');
-
-    // Find the target 'Runner' do block
-    final targetMatch = RegExp("target\\s+['\"]Runner['\"]").firstMatch(content);
-    if (targetMatch != null) {
-      // Find the end of the target block
-      int braceCount = 0;
-      int insertPos = targetMatch.end;
-      bool foundTargetEnd = false;
-
-      // Skip to the opening brace
-      for (int i = targetMatch.end; i < content.length; i++) {
-        if (content[i] == '{' || (i + 3 < content.length && content.substring(i, i + 3) == ' do')) {
-          insertPos = i + (content[i] == '{' ? 1 : 3);
-          break;
-        }
-      }
-
-      final before = content.substring(0, insertPos);
-      final after = content.substring(insertPos);
-
-      final unityConfig = '''
-
-  # Unity Framework integration
-  pod 'UnityFramework', :path => 'UnityFramework.framework'
-''';
-
-      content = '$before$unityConfig$after';
-      await podfile.writeAsString(content);
-      logger.success('Added UnityFramework to Podfile');
-    } else {
-      logger.warning('Could not find Runner target in Podfile');
-    }
+    logger.detail('Podfile configuration not needed - framework will be included via gameframework_unity plugin');
+    // Note: The UnityFramework.framework is now vendored in the gameframework_unity podspec,
+    // so we don't need to add it to the Podfile manually
   }
 
   /// Configure Info.plist for Unity
@@ -923,4 +991,101 @@ dependencies {
   }
 
   String _capitalize(String s) => s[0].toUpperCase() + s.substring(1);
+  
+  /// Fix gameframework_unity plugin build.gradle for proper Unity dependency resolution
+  Future<void> _fixUnityPluginBuildGradle(String unityLibraryPath) async {
+    logger.detail('Checking gameframework_unity plugin build.gradle...');
+    
+    // The plugin build.gradle should be in flutter packages
+    // Navigate from android/unityLibrary to .flutter-plugins to find plugin location
+    final androidDir = Directory(unityLibraryPath).parent.path;
+    final flutterProjectRoot = Directory(androidDir).parent.path;
+    
+    // Look for gameframework_unity in .flutter-plugins file
+    final flutterPluginsFile = File(path.join(flutterProjectRoot, '.flutter-plugins'));
+    if (!await flutterPluginsFile.exists()) {
+      logger.warning('.flutter-plugins file not found, skipping gameframework_unity fix');
+      return;
+    }
+    
+    final pluginsContent = await flutterPluginsFile.readAsString();
+    final gameframeworkUnityMatch = RegExp(r'gameframework_unity=(.+)').firstMatch(pluginsContent);
+    
+    if (gameframeworkUnityMatch == null) {
+      logger.detail('gameframework_unity plugin not found in .flutter-plugins');
+      return;
+    }
+    
+    final pluginPath = gameframeworkUnityMatch.group(1)!;
+    final pluginBuildGradlePath = path.join(pluginPath, 'android', 'build.gradle');
+    
+    if (!await File(pluginBuildGradlePath).exists()) {
+      logger.warning('gameframework_unity build.gradle not found at $pluginBuildGradlePath');
+      return;
+    }
+    
+    final buildGradleFile = File(pluginBuildGradlePath);
+    String content = await buildGradleFile.readAsString();
+    
+    // Check if namespace is present
+    if (!content.contains('namespace ')) {
+      logger.detail('Adding namespace to gameframework_unity build.gradle...');
+      
+      final androidBlockMatch = RegExp(r'android\s*\{').firstMatch(content);
+      if (androidBlockMatch != null) {
+        final insertPos = androidBlockMatch.end;
+        final before = content.substring(0, insertPos);
+        final after = content.substring(insertPos);
+        
+        content = '$before\n    namespace \'com.xraph.gameframework.unity\'$after';
+      }
+    }
+    
+    // Check if Unity dependency resolution is present
+    if (!content.contains('unity-classes.jar') && !content.contains('compileOnly files(unityClassesJar)')) {
+      logger.detail('Adding Unity dependency resolution to gameframework_unity...');
+      
+      // Find the dependencies block
+      final dependenciesMatch = RegExp(r'dependencies\s*\{').firstMatch(content);
+      if (dependenciesMatch != null) {
+        // Find where to insert (after implementation project(':gameframework'))
+        final gameframeworkDepMatch = RegExp(
+          'implementation project\\(["\'](:gameframework)["\']\\)'
+        ).firstMatch(content);
+        
+        if (gameframeworkDepMatch != null) {
+          final insertPos = gameframeworkDepMatch.end;
+          final before = content.substring(0, insertPos);
+          final after = content.substring(insertPos);
+          
+          final unityDepConfig = '''
+
+        // Unity - This will be provided by the app's unityLibrary module
+        def unityProject = project.findProject(':unityLibrary')
+        if (unityProject != null) {
+            implementation unityProject
+            
+            // Also directly add the Unity classes JAR for Kotlin compilation
+            def unityClassesJar = new File(unityProject.projectDir, 'libs/unity-classes.jar')
+            if (unityClassesJar.exists()) {
+                compileOnly files(unityClassesJar)
+            }
+        } else {
+            // Fallback for builds without Unity
+            compileOnly fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+        }''';
+          
+          content = '$before$unityDepConfig$after';
+        }
+      }
+    }
+    
+    // Write back if modified
+    if (content != await buildGradleFile.readAsString()) {
+      await buildGradleFile.writeAsString(content);
+      logger.success('Updated gameframework_unity plugin build.gradle');
+    } else {
+      logger.detail('gameframework_unity plugin build.gradle already up to date');
+    }
+  }
 }

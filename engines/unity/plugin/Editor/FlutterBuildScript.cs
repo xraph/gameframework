@@ -92,7 +92,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Build for Android - exports as Gradle project
         /// </summary>
-        [MenuItem("Flutter/Build Android")]
+        [MenuItem("Game Framework/Build Android")]
         public static void BuildAndroid()
         {
             Debug.Log("Starting Android build for Flutter...");
@@ -150,7 +150,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Build for iOS - exports as Xcode project
         /// </summary>
-        [MenuItem("Flutter/Build iOS")]
+        [MenuItem("Game Framework/Build iOS")]
         public static void BuildIos()
         {
             Debug.Log("Starting iOS build for Flutter...");
@@ -197,7 +197,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Build for macOS
         /// </summary>
-        [MenuItem("Flutter/Build macOS")]
+        [MenuItem("Game Framework/Build macOS")]
         public static void BuildMacos()
         {
             Debug.Log("Starting macOS build for Flutter...");
@@ -243,7 +243,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Build for Windows
         /// </summary>
-        [MenuItem("Flutter/Build Windows")]
+        [MenuItem("Game Framework/Build Windows")]
         public static void BuildWindows()
         {
             Debug.Log("Starting Windows build for Flutter...");
@@ -289,7 +289,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Build for Linux
         /// </summary>
-        [MenuItem("Flutter/Build Linux")]
+        [MenuItem("Game Framework/Build Linux")]
         public static void BuildLinux()
         {
             Debug.Log("Starting Linux build for Flutter...");
@@ -335,7 +335,7 @@ namespace Xraph.GameFramework.Unity.Editor
         /// <summary>
         /// Validate build configuration
         /// </summary>
-        [MenuItem("Flutter/Validate Build Settings")]
+        [MenuItem("Game Framework/Validate Build Settings")]
         public static void ValidateBuildSettings()
         {
             Debug.Log("Validating Unity build settings for Flutter...");

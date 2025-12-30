@@ -2,6 +2,7 @@ group 'com.xraph.gameframework.unity'
 version '1.0'
 
 buildscript {
+    ext.kotlin_version = '1.8.22'
     repositories {
         google()
         mavenCentral()
@@ -9,11 +10,11 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:8.1.0'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
-rootProject.allprojects {
+allprojects {
     repositories {
         google()
         mavenCentral()
@@ -25,7 +26,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.xraph.gameframework.unity'
-    compileSdkVersion 34
+    compileSdkVersion 33
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -42,22 +43,29 @@ android {
 
     defaultConfig {
         minSdkVersion 21
+        targetSdkVersion 33
     }
-}
 
-dependencies {
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0'
-    implementation 'androidx.lifecycle:lifecycle-runtime:2.6.1'
+    dependencies {
+        implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
 
-    // Unity Player classes - needed for compilation
-    // The actual unityLibrary will be linked at the app level
-    // Support both nested (unityLibrary/unityLibrary) and root-level (unityLibrary) structures
-    def nestedUnityJar = new File(projectDir, '../../../../example/android/unityLibrary/unityLibrary/libs/unity-classes.jar')
-    def rootUnityJar = new File(projectDir, '../../../../example/android/unityLibrary/libs/unity-classes.jar')
+        // Game Framework Core
+        implementation project(':gameframework')
 
-    if (nestedUnityJar.exists()) {
-        compileOnly files(nestedUnityJar.absolutePath)
-    } else if (rootUnityJar.exists()) {
-        compileOnly files(rootUnityJar.absolutePath)
+        // Unity - This will be provided by the app's unityLibrary module
+        def unityProject = project.findProject(':unityLibrary')
+        if (unityProject != null) {
+            // Add Unity library and its classes JAR for compilation
+            implementation unityProject
+
+            // Also directly add the Unity classes JAR for Kotlin compilation
+            def unityClassesJar = new File(unityProject.projectDir, 'libs/unity-classes.jar')
+            if (unityClassesJar.exists()) {
+                compileOnly files(unityClassesJar)
+            }
+        } else {
+            // Fallback for builds without Unity
+            compileOnly fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+        }
     }
 }

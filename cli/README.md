@@ -13,25 +13,51 @@ Command-line tool to automate Unity and Unreal Engine game exports and integrati
 
 ## Installation
 
-### Global Installation (Recommended)
+### Option 1: Using Make (Recommended for Development)
+
+From the repository root:
 
 ```bash
-dart pub global activate --source path /path/to/flutter-game-framework/cli
+make install-cli
 ```
 
-Now you can use `game` command anywhere:
+This compiles the CLI to a native executable at `~/.local/bin/game` for instant startup with no dependency resolution overhead.
+
+**First-time setup:** Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload your shell:
+```bash
+source ~/.zshrc  # or source ~/.bashrc
+```
+
+### Option 2: Manual Compilation
 
 ```bash
-game --help
+cd /path/to/flutter-game-framework/cli
+dart pub get
+dart compile exe bin/game.dart -o ~/.local/bin/game
 ```
 
-### Local Installation
+### Option 3: Run Directly (for testing)
 
 ```bash
 cd /path/to/flutter-game-framework/cli
 dart pub get
 dart run bin/game.dart --help
 ```
+
+### Rebuilding After Changes
+
+When developing the CLI:
+
+```bash
+make cli-rebuild
+```
+
+This quickly recompiles and updates the installed executable.
 
 ---
 

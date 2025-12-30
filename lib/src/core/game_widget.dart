@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../models/android_platform_view_mode.dart';
 import 'game_engine_controller.dart';
 import 'game_engine_registry.dart';
 import '../models/game_engine_config.dart';
@@ -118,6 +119,16 @@ class _GameWidgetState extends State<GameWidget> {
 
       // Notify the app that engine is created
       widget.onEngineCreated(controller);
+      
+      // Auto-start engine if configured
+      if (widget.config.runImmediately) {
+        debugPrint('Auto-starting ${widget.engineType.engineName} engine (runImmediately: true)');
+        try {
+          await controller.create();
+        } catch (e) {
+          debugPrint('Failed to auto-start engine: $e');
+        }
+      }
     } catch (e) {
       debugPrint('Failed to initialize ${widget.engineType.engineName}: $e');
       // You might want to show an error widget here
@@ -204,31 +215,7 @@ class _GameWidgetState extends State<GameWidget> {
 
     // Platform-specific view creation
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return PlatformViewLink(
-        viewType: viewType,
-        surfaceFactory: (context, controller) {
-          return AndroidViewSurface(
-            controller: controller as AndroidViewController,
-            gestureRecognizers: widget.gestureRecognizers ??
-                const <Factory<OneSequenceGestureRecognizer>>{},
-            hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-          );
-        },
-        onCreatePlatformView: (params) {
-          return PlatformViewsService.initSurfaceAndroidView(
-            id: params.id,
-            viewType: viewType,
-            layoutDirection: widget.layoutDirection ?? TextDirection.ltr,
-            creationParams: widget.config.toMap(),
-            creationParamsCodec: const StandardMessageCodec(),
-            onFocus: () {
-              params.onFocusChanged(true);
-            },
-          )
-            ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
-            ..create();
-        },
-      );
+      return _buildAndroidPlatformView(viewType);
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       return UiKitView(
         viewType: viewType,
@@ -251,5 +238,84 @@ class _GameWidgetState extends State<GameWidget> {
         ),
       );
     }
+  }
+
+  /// Build Android platform view with the selected rendering mode
+  Widget _buildAndroidPlatformView(String viewType) {
+    // Choose rendering mode based on configuration
+    switch (widget.config.androidPlatformViewMode) {
+      case AndroidPlatformViewMode.hybridComposition:
+        return _buildHybridCompositionView(viewType);
+      case AndroidPlatformViewMode.virtualDisplay:
+        return _buildVirtualDisplayView(viewType);
+    }
+  }
+
+  /// Build Android platform view using Hybrid Composition (recommended)
+  ///
+  /// Hybrid Composition provides better performance on Android 10+ and more
+  /// accurate input handling. This is the default mode.
+  ///
+  /// Minimum SDK: Android 19 (API level 19)
+  Widget _buildHybridCompositionView(String viewType) {
+    return PlatformViewLink(
+      viewType: viewType,
+      surfaceFactory: (context, controller) {
+        return AndroidViewSurface(
+          controller: controller as AndroidViewController,
+          gestureRecognizers: widget.gestureRecognizers ??
+              const <Factory<OneSequenceGestureRecognizer>>{},
+          hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+        );
+      },
+      onCreatePlatformView: (params) {
+        return PlatformViewsService.initSurfaceAndroidView(
+          id: params.id,
+          viewType: viewType,
+          layoutDirection: widget.layoutDirection ?? TextDirection.ltr,
+          creationParams: widget.config.toMap(),
+          creationParamsCodec: const StandardMessageCodec(),
+          onFocus: () {
+            params.onFocusChanged(true);
+          },
+        )
+          ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+          ..create();
+      },
+    );
+  }
+
+  /// Build Android platform view using Virtual Display (Texture Layer)
+  ///
+  /// Virtual Display renders the view to a texture, which can be better for
+  /// complex animations but has higher memory usage.
+  ///
+  /// Minimum SDK: Android 20 (API level 20)
+  Widget _buildVirtualDisplayView(String viewType) {
+    return PlatformViewLink(
+      viewType: viewType,
+      surfaceFactory: (context, controller) {
+        return AndroidViewSurface(
+          controller: controller as AndroidViewController,
+          gestureRecognizers: widget.gestureRecognizers ??
+              const <Factory<OneSequenceGestureRecognizer>>{},
+          hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+        );
+      },
+      onCreatePlatformView: (params) {
+        return PlatformViewsService.initExpensiveAndroidView(
+          id: params.id,
+          viewType: viewType,
+          layoutDirection: widget.layoutDirection ?? TextDirection.ltr,
+          creationParams: widget.config.toMap(),
+          creationParamsCodec: const StandardMessageCodec(),
+          onFocus: () {
+            params.onFocusChanged(true);
+          },
+        )
+          ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+          ..create();
+      },
+    );
   }
 }

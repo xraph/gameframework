@@ -171,6 +171,11 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               onEngineCreated: _onEngineCreated,
               onMessage: _onMessage,
               onSceneLoaded: _onSceneLoaded,
+              config: const GameEngineConfig(
+                androidPlatformViewMode: AndroidPlatformViewMode.virtualDisplay,
+                runImmediately: true,
+                enableDebugLogs: true,
+              ),
             ),
           ),
 

@@ -23,7 +23,7 @@ namespace FlutterUnity.Editor
         private bool configureBuildSettings = true;
         private Vector2 scrollPosition;
 
-        [MenuItem("Flutter/AR Foundation Setup", false, 80)]
+        [MenuItem("Game Framework/AR Foundation Setup", false, 80)]
         public static void ShowWindow()
         {
             var window = GetWindow<ARFoundationSetup>("AR Foundation Setup");

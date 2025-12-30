@@ -1,3 +1,7 @@
+# ============================================================================
+# Flutter Game Framework - Comprehensive .gitignore
+# ============================================================================
+
 # Miscellaneous
 *.class
 *.log
@@ -10,26 +14,270 @@
 .svn/
 migrate_working_dir/
 
-# IntelliJ related
+# ============================================================================
+# IntelliJ / Android Studio
+# ============================================================================
 *.iml
 *.ipr
 *.iws
 .idea/
+*.hprof
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# ============================================================================
+# VS Code
+# ============================================================================
+.vscode/
+# Uncomment if you want to commit workspace settings:
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
 
-# Flutter/Dart/Pub related
-# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+# ============================================================================
+# Flutter / Dart / Pub
+# ============================================================================
+# Libraries should not include pubspec.lock
 /pubspec.lock
 **/doc/api/
 .dart_tool/
+.packages
+.pub-cache/
+.pub/
 build/
 
+# Flutter version manager
+.fvm/
+
+# ============================================================================
+# Android
+# ============================================================================
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+*.keystore
+
+# Android Studio
+**/android/**/.idea
+**/android/**/.settings
+**/android/**/.classpath
+**/android/**/.project
+
+# ============================================================================
+# iOS / macOS
+# ============================================================================
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# macOS
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Flutter/ephemeral
+**/macos/Pods/
+**/macos/xcuserdata/
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+**/.DS_Store
+
+# CocoaPods
+**/Pods/
+**/Podfile.lock
+
+# ============================================================================
+# Linux
+# ============================================================================
+**/linux/flutter/ephemeral
+
+# ============================================================================
+# Windows
+# ============================================================================
+**/windows/flutter/ephemeral
+
+# Windows Native Files
+*.dll
+*.exe
+*.exp
+*.ilk
+*.lib
+*.obj
+*.pdb
+
+# ============================================================================
+# Unity Engine Integration
+# ============================================================================
+# Unity build artifacts
+**/unity/[Ll]ibrary/
+**/unity/[Tt]emp/
+**/unity/[Oo]bj/
+**/unity/[Bb]uild/
+**/unity/[Bb]uilds/
+**/unity/[Ll]ogs/
+**/unity/[Uu]ser[Ss]ettings/
+
+# Unity memory captures
+**/unity/[Mm]emoryCaptures/
+
+# Asset meta data should only be ignored when the corresponding asset is also ignored
+# !**/unity/**/*.meta
+
+# Uncomment this line if you wish to ignore the asset store tools plugin
+# **/unity/[Aa]ssets/AssetStoreTools*
+
+# Unity auto-generated files
+**/unity/sysinfo.txt
+**/unity/*.stackdump
+**/unity/*.pidb.meta
+**/unity/*.pdb.meta
+**/unity/*.mdb.meta
+
+# Unity crash logs
+**/unity/crash*.log
+
+# Unity editor settings
+**/unity/ProjectSettings/ProjectVersion.txt
+
+# Rider (Unity IDE)
+**/.idea/
+**/.idea_modules/
+
+# ============================================================================
+# Unreal Engine Integration
+# ============================================================================
+**/unreal/Binaries/
+**/unreal/Build/
+**/unreal/Intermediate/
+**/unreal/Saved/
+**/unreal/DerivedDataCache/
+
+# Unreal Engine files
+**/unreal/*.opensdf
+**/unreal/*.sdf
+**/unreal/*.VC.db
+**/unreal/*.suo
+**/unreal/*.xcworkspace
+
+# Starter content (large binary files)
+**/unreal/Content/StarterContent/
+
+# ============================================================================
+# Game Engine Exports
+# ============================================================================
+# Unity/Unreal exported builds
+/Exports/
+/exports/
+**/Exports/
+**/exports/
+
+# ============================================================================
+# Documentation Build Artifacts
+# ============================================================================
 docs-files
 .claude
 
-# FVM Version Cache
-.fvm/
+# ============================================================================
+# Test Coverage
+# ============================================================================
+coverage/
+*.lcov
+test/.test_coverage.dart
+
+# ============================================================================
+# Platform-specific Build Outputs
+# ============================================================================
+*.apk
+*.aab
+*.ipa
+*.app
+*.framework
+*.dSYM.zip
+*.dSYM
+
+# ============================================================================
+# Temporary and Log Files
+# ============================================================================
+*.tmp
+*.temp
+*_output.log
+*_build.log
+flutter_*.log
+build_output.log
+
+# ============================================================================
+# Environment and Secrets
+# ============================================================================
+.env
+.env.local
+.env.*.local
+secrets.yaml
+*.pem
+*.p12
+*.mobileprovision
+*.certSigningRequest
+
+# ============================================================================
+# Package Manager Artifacts
+# ============================================================================
+node_modules/
+.npm
+.yarn-integrity
+yarn-error.log
+
+# ============================================================================
+# Native Dependencies
+# ============================================================================
+**/native_assets/
+
+# ============================================================================
+# Symbolication files (crash reports)
+# ============================================================================
+*.dSYM/
+**/*.symbols
+app.*.symbols
+
+# ============================================================================
+# Web builds
+# ============================================================================
+**/web/flutter_service_worker.js
+
+# ============================================================================
+# Exceptions - Files to Keep
+# ============================================================================
+# Keep gradle wrapper
+!gradle-wrapper.jar
+
+# Keep empty directories with .gitkeep
+!**/.gitkeep

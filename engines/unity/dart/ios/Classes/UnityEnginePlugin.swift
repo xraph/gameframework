@@ -1,68 +1,59 @@
 import Flutter
-import UIKit
+import Foundation
+import gameframework
 
+/**
+ * UnityEnginePlugin - Plugin for Unity Engine integration
+ *
+ * This plugin registers the Unity engine factory with the game framework,
+ * allowing Unity engines to be embedded in Flutter applications on iOS.
+ */
 public class UnityEnginePlugin: NSObject, FlutterPlugin {
-    private static var channel: FlutterMethodChannel?
+
+    private static let engineType = "unity"
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        channel = FlutterMethodChannel(
-            name: "com.xraph.gameframework.unity",
-            binaryMessenger: registrar.messenger()
+        // Register Unity factory with the game framework
+        let factory = UnityEngineFactory()
+        GameEngineRegistry.shared.registerFactory(
+            engineType: engineType,
+            factory: factory
         )
-
-        let instance = UnityEnginePlugin()
-        registrar.addMethodCallDelegate(instance, channel: channel!)
-
-        // Register Unity platform view factory
-        let factory = UnityViewFactory(messenger: registrar.messenger())
-        registrar.register(
-            factory,
-            withId: "com.xraph.gameframework/unity"
-        )
+        
+        // Trigger platform view registration (lazy registration pattern)
+        GameframeworkPlugin.registerPlatformView(engineType: engineType)
     }
 
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "isUnityReady":
-            result(UnityPlayerManager.shared.isInitialized())
+    /**
+     * Manual registration method for early initialization
+     *
+     * Call this before the Flutter engine is fully initialized if needed.
+     */
+    public static func registerManually() {
+        let factory = UnityEngineFactory()
+        GameEngineRegistry.shared.registerFactory(
+            engineType: engineType,
+            factory: factory
+        )
+    }
+}
 
-        case "getUnityVersion":
-            result(UnityPlayerManager.shared.getUnityVersion())
+/**
+ * Factory for creating Unity engine controllers
+ */
+public class UnityEngineFactory: NSObject, GameEngineFactory {
 
-        case "pauseUnity":
-            UnityPlayerManager.shared.pause()
-            result(nil)
-
-        case "resumeUnity":
-            UnityPlayerManager.shared.resume()
-            result(nil)
-
-        case "unloadUnity":
-            UnityPlayerManager.shared.unload()
-            result(nil)
-
-        case "sendMessage":
-            guard let args = call.arguments as? [String: Any],
-                  let gameObject = args["gameObject"] as? String,
-                  let methodName = args["methodName"] as? String else {
-                result(FlutterError(
-                    code: "INVALID_ARGS",
-                    message: "Missing gameObject or methodName",
-                    details: nil
-                ))
-                return
-            }
-
-            let message = args["message"] as? String ?? ""
-            UnityPlayerManager.shared.sendMessage(
-                gameObject: gameObject,
-                methodName: methodName,
-                message: message
-            )
-            result(nil)
-
-        default:
-            result(FlutterMethodNotImplemented)
-        }
+    public func createController(
+        frame: CGRect,
+        viewId: Int64,
+        messenger: FlutterBinaryMessenger,
+        config: [String: Any]
+    ) -> GameEnginePlatformView {
+        return UnityEngineController(
+            frame: frame,
+            viewId: viewId,
+            messenger: messenger,
+            config: config
+        )
     }
 }

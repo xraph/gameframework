@@ -7,9 +7,16 @@ namespace Xraph.GameFramework.Unity
     /// Example game manager that demonstrates Flutter integration
     ///
     /// This is a sample component showing how to interact with Flutter.
+    /// Uses singleton pattern to ensure only one instance exists.
     /// Customize this for your game's needs.
+    /// 
+    /// Usage:
+    /// <code>
+    /// FlutterGameManager.Instance.StartGame("level1");
+    /// FlutterGameManager.Instance.UpdateScore("100");
+    /// </code>
     /// </summary>
-    public class FlutterGameManager : MonoBehaviour
+    public class FlutterGameManager : SingletonMonoBehaviour<FlutterGameManager>
     {
         [Header("Settings")]
         [Tooltip("Send game state updates to Flutter")]
@@ -21,8 +28,14 @@ namespace Xraph.GameFramework.Unity
         private float lastUpdateTime;
         private GameState currentState;
 
-        void Start()
+        /// <summary>
+        /// Initialize the singleton instance
+        /// Called automatically by SingletonMonoBehaviour
+        /// </summary>
+        protected override void SingletonAwake()
         {
+            base.SingletonAwake();
+            
             // Subscribe to Flutter messages
             FlutterBridge.OnFlutterMessage += HandleFlutterMessage;
 
@@ -36,12 +49,18 @@ namespace Xraph.GameFramework.Unity
                 lives = 3
             };
 
+            Debug.Log("FlutterGameManager singleton initialized");
+        }
+
+        void Start()
+        {
             // Notify Flutter that the game is ready
             NotifyGameReady();
         }
 
-        void OnDestroy()
+        protected override void OnDestroy()
         {
+            base.OnDestroy();
             FlutterBridge.OnFlutterMessage -= HandleFlutterMessage;
         }
 

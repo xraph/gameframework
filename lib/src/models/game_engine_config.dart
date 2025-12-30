@@ -1,3 +1,5 @@
+import 'android_platform_view_mode.dart';
+
 /// Configuration object for game engine initialization
 class GameEngineConfig {
   const GameEngineConfig({
@@ -8,6 +10,7 @@ class GameEngineConfig {
     this.enableDebugLogs = true,
     this.targetFrameRate,
     this.engineSpecificConfig,
+    this.androidPlatformViewMode = AndroidPlatformViewMode.hybridComposition,
   });
 
   /// Force engine to fullscreen mode
@@ -43,6 +46,17 @@ class GameEngineConfig {
   /// ```
   final Map<String, dynamic>? engineSpecificConfig;
 
+  /// Android platform view rendering mode
+  ///
+  /// Controls how the native Android view is rendered within Flutter.
+  /// See [AndroidPlatformViewMode] for details on each mode.
+  ///
+  /// **Default:** [AndroidPlatformViewMode.hybridComposition]
+  ///
+  /// For more information, see:
+  /// https://docs.flutter.dev/platform-integration/android/platform-views
+  final AndroidPlatformViewMode androidPlatformViewMode;
+
   /// Create a copy with updated values
   GameEngineConfig copyWith({
     bool? fullscreen,
@@ -52,6 +66,7 @@ class GameEngineConfig {
     bool? enableDebugLogs,
     int? targetFrameRate,
     Map<String, dynamic>? engineSpecificConfig,
+    AndroidPlatformViewMode? androidPlatformViewMode,
   }) {
     return GameEngineConfig(
       fullscreen: fullscreen ?? this.fullscreen,
@@ -61,6 +76,7 @@ class GameEngineConfig {
       enableDebugLogs: enableDebugLogs ?? this.enableDebugLogs,
       targetFrameRate: targetFrameRate ?? this.targetFrameRate,
       engineSpecificConfig: engineSpecificConfig ?? this.engineSpecificConfig,
+      androidPlatformViewMode: androidPlatformViewMode ?? this.androidPlatformViewMode,
     );
   }
 
@@ -74,6 +90,7 @@ class GameEngineConfig {
       'enableDebugLogs': enableDebugLogs,
       'targetFrameRate': targetFrameRate,
       'engineSpecificConfig': engineSpecificConfig,
+      'androidPlatformViewMode': androidPlatformViewMode.name,
     };
   }
 
@@ -86,7 +103,8 @@ class GameEngineConfig {
         'unloadOnDispose: $unloadOnDispose, '
         'enableDebugLogs: $enableDebugLogs, '
         'targetFrameRate: $targetFrameRate, '
-        'engineSpecificConfig: $engineSpecificConfig'
+        'engineSpecificConfig: $engineSpecificConfig, '
+        'androidPlatformViewMode: ${androidPlatformViewMode.name}'
         ')';
   }
 }

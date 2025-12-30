@@ -18,112 +18,164 @@ class UnityController implements GameEngineController {
 
   StreamSubscription? _eventSubscription;
   bool _disposed = false;
+  bool _eventStreamSetup = false;
 
   UnityController(int viewId)
       : _channel = MethodChannel('com.xraph.gameframework/engine_$viewId'),
         _eventChannel = EventChannel('com.xraph.gameframework/events_$viewId') {
-    // Delay event stream setup to allow platform view to be created first
-    Future.delayed(const Duration(milliseconds: 100), _setupEventStream);
+    // Defer event stream setup to ensure platform view is created
+    // Platform views are created asynchronously, so we wait for next microtask
+    scheduleMicrotask(_setupEventStream);
   }
 
-  void _setupEventStream() {
+  /// Set up event stream with explicit native confirmation
+  /// This eliminates race conditions by using method channel handshake
+  /// 
+  /// Uses polling with exponential backoff to wait for platform view creation
+  Future<void> _setupEventStream({int attempt = 0, int maxAttempts = 10}) async {
+    if (_disposed || _eventStreamSetup) return;
+    
     try {
+      // Step 1: Request native side to register event handler
+      // This will fail with MissingPluginException if platform view not created yet
+      final setupResult = await _channel.invokeMethod<bool>('events#setup');
+      
+      if (setupResult != true) {
+        throw Exception('Native event setup returned false or null');
+      }
+      
+      _eventStreamSetup = true;
+      
+      // Step 2: Native handler is now guaranteed to be registered
+      // We can safely subscribe to the event stream
       _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
-      (dynamic event) {
-        if (event is Map) {
-          final eventName = event['event'] as String?;
-          final eventData = event['data'];
+        (dynamic event) {
+          if (event is Map) {
+            final eventName = event['event'] as String?;
+            final eventData = event['data'];
 
-          switch (eventName) {
-            case 'onMessage':
-              if (eventData is Map) {
-                final message = GameEngineMessage.fromMap(
-                    Map<String, dynamic>.from(eventData));
-                _messageController.add(message);
-              }
-              break;
+            switch (eventName) {
+              case 'onMessage':
+                if (eventData is Map) {
+                  final message = GameEngineMessage.fromMap(
+                      Map<String, dynamic>.from(eventData));
+                  _messageController.add(message);
+                }
+                break;
 
-            case 'onSceneLoaded':
-              if (eventData is Map) {
-                final sceneData = Map<String, dynamic>.from(eventData);
-                final sceneLoaded = GameSceneLoaded(
-                  name: sceneData['name'] as String? ?? '',
-                  buildIndex: sceneData['buildIndex'] as int? ?? -1,
-                  isLoaded: sceneData['isLoaded'] as bool? ?? false,
-                  isValid: sceneData['isValid'] as bool? ?? false,
-                  metadata:
-                      sceneData['metadata'] as Map<String, dynamic>? ?? {},
-                );
-                _sceneLoadController.add(sceneLoaded);
-              }
-              break;
+              case 'onSceneLoaded':
+                if (eventData is Map) {
+                  final sceneData = Map<String, dynamic>.from(eventData);
+                  final sceneLoaded = GameSceneLoaded(
+                    name: sceneData['name'] as String? ?? '',
+                    buildIndex: sceneData['buildIndex'] as int? ?? -1,
+                    isLoaded: sceneData['isLoaded'] as bool? ?? false,
+                    isValid: sceneData['isValid'] as bool? ?? false,
+                    metadata:
+                        sceneData['metadata'] as Map<String, dynamic>? ?? {},
+                  );
+                  _sceneLoadController.add(sceneLoaded);
+                }
+                break;
 
-            case 'onCreated':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.created,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onCreated':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.created,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onLoaded':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.loaded,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onLoaded':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.loaded,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onPaused':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.paused,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onPaused':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.paused,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onResumed':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.resumed,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onResumed':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.resumed,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onUnloaded':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.unloaded,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onUnloaded':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.unloaded,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onDestroyed':
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.destroyed,
-                timestamp: DateTime.now(),
-              ));
-              break;
+              case 'onDestroyed':
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.destroyed,
+                  timestamp: DateTime.now(),
+                ));
+                break;
 
-            case 'onError':
-              final message = eventData is Map
-                  ? (eventData['message'] as String? ?? 'Unknown error')
-                  : 'Unknown error';
-              _eventController.add(GameEngineEvent(
-                type: GameEngineEventType.error,
-                timestamp: DateTime.now(),
-                message: message,
-              ));
-              break;
+              case 'onError':
+                final message = eventData is Map
+                    ? (eventData['message'] as String? ?? 'Unknown error')
+                    : 'Unknown error';
+                _eventController.add(GameEngineEvent(
+                  type: GameEngineEventType.error,
+                  timestamp: DateTime.now(),
+                  message: message,
+                ));
+                break;
+            }
           }
-        }
-      },
-      onError: (error) {
-        _eventController.add(GameEngineEvent(
-          type: GameEngineEventType.error,
-          timestamp: DateTime.now(),
-          message: 'Event stream error: $error',
-        ));
-      },
-    );
+        },
+        onError: (error) {
+          _eventController.add(GameEngineEvent(
+            type: GameEngineEventType.error,
+            timestamp: DateTime.now(),
+            message: 'Event stream error: $error',
+          ));
+        },
+      );
     } catch (e) {
-      // Log error but don't crash - the stream might not be ready yet
-      print('Failed to setup event stream: $e');
+      // Handle MissingPluginException - platform view not created yet
+      if (e is MissingPluginException && attempt < maxAttempts) {
+        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms...
+        final delayMs = 50 * (1 << attempt);
+        if (attempt == 0) {
+          // First attempt is expected to fail, don't log
+        } else if (attempt < 3) {
+          print('Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
+        } else {
+          print('Warning: Platform view still not ready after ${attempt} attempts, retrying in ${delayMs}ms');
+        }
+        
+        await Future.delayed(Duration(milliseconds: delayMs));
+        return _setupEventStream(attempt: attempt + 1, maxAttempts: maxAttempts);
+      }
+      
+      // Fatal error or max retries exceeded
+      final message = attempt >= maxAttempts
+          ? 'Platform view creation timeout after $maxAttempts attempts'
+          : 'Failed to setup event stream: $e';
+      
+      _eventController.add(GameEngineEvent(
+        type: GameEngineEventType.error,
+        timestamp: DateTime.now(),
+        message: message,
+      ));
+      
+      if (attempt >= maxAttempts) {
+        throw TimeoutException(
+          'Platform view not created after $maxAttempts attempts',
+          Duration(milliseconds: 50 * ((1 << maxAttempts) - 1)),
+        );
+      }
+      rethrow;
     }
   }
 
@@ -203,13 +255,32 @@ class UnityController implements GameEngineController {
   }
 
   @override
-  Future<bool> create() async {
+  Future<bool> create({int attempt = 0, int maxAttempts = 10}) async {
     try {
       final result = await _channel.invokeMethod<bool>('engine#create');
       return result ?? false;
     } catch (e) {
+      // Handle MissingPluginException - platform view not created yet
+      if (e is MissingPluginException && attempt < maxAttempts) {
+        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms...
+        final delayMs = 50 * (1 << attempt);
+        if (attempt == 0) {
+          // First attempt failure is expected, don't log
+        } else if (attempt < 3) {
+          print('Platform view not ready for create(), retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
+        } else {
+          print('Warning: Platform view still not ready for create() after ${attempt} attempts, retrying in ${delayMs}ms');
+        }
+        
+        await Future.delayed(Duration(milliseconds: delayMs));
+        return create(attempt: attempt + 1, maxAttempts: maxAttempts);
+      }
+      
+      // Fatal error or max retries exceeded
       throw EngineCommunicationException(
-        'Failed to create engine: $e',
+        attempt >= maxAttempts
+            ? 'Platform view creation timeout after $maxAttempts attempts'
+            : 'Failed to create engine: $e',
         target: 'UnityController',
         method: 'create',
         engineType: engineType,

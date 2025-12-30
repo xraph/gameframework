@@ -19,10 +19,10 @@ namespace Xraph.GameFramework.Unity.Editor
         private bool developmentBuild = false;
         private bool autoRunBuilder = false;
 
-        [MenuItem("Flutter/Export for Flutter")]
+        [MenuItem("Game Framework/Export Unity Project")]
         public static void ShowWindow()
         {
-            GetWindow<FlutterExporter>("Flutter Exporter");
+            GetWindow<FlutterExporter>("Game Framework Exporter");
         }
 
         void OnGUI()
@@ -197,6 +197,10 @@ namespace Xraph.GameFramework.Unity.Editor
                 if (report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
                 {
                     Debug.Log("Android export succeeded: " + path);
+                    
+                    // CRITICAL: Fix AndroidManifest for embedded mode
+                    FixAndroidManifestForEmbedding(Path.Combine(path, "unityLibrary"));
+                    
                     CreateAndroidReadme(path);
                 }
                 else
@@ -383,7 +387,7 @@ For more information, see the Flutter Game Framework documentation.
             File.WriteAllText(Path.Combine(path, "README.md"), readme);
         }
 
-        [MenuItem("Flutter/Quick Export Android")]
+        [MenuItem("Game Framework/Quick Export Android")]
         public static void QuickExportAndroidMenu()
         {
             string path = EditorUtility.SaveFolderPanel("Select Android Export Folder", "", "android");
@@ -397,7 +401,7 @@ For more information, see the Flutter Game Framework documentation.
             }
         }
 
-        [MenuItem("Flutter/Quick Export iOS")]
+        [MenuItem("Game Framework/Quick Export iOS")]
         public static void QuickExportIOSMenu()
         {
             string path = EditorUtility.SaveFolderPanel("Select iOS Export Folder", "", "ios");
@@ -408,6 +412,96 @@ For more information, see the Flutter Game Framework documentation.
                     "iOS export completed!\n\nExported to: " + path,
                     "OK");
                 EditorUtility.RevealInFinder(path);
+            }
+        }
+
+        /// <summary>
+        /// Fix AndroidManifest.xml for embedded mode (remove launcher intent)
+        /// CRITICAL: Unity exports with LAUNCHER intent by default, which makes it
+        /// launch as a standalone app instead of embedding in Flutter
+        /// </summary>
+        private static void FixAndroidManifestForEmbedding(string unityLibraryPath)
+        {
+            string manifestPath = Path.Combine(unityLibraryPath, "src", "main", "AndroidManifest.xml");
+            
+            if (!File.Exists(manifestPath))
+            {
+                Debug.LogWarning($"AndroidManifest.xml not found at {manifestPath}");
+                return;
+            }
+
+            try
+            {
+                string manifest = File.ReadAllText(manifestPath);
+                string originalManifest = manifest;
+
+                // Remove the launcher intent-filter that causes Unity to launch as standalone app
+                // This is the MOST CRITICAL fix for embedded mode
+                int intentFilterStart = manifest.IndexOf("<intent-filter>");
+                while (intentFilterStart >= 0)
+                {
+                    int intentFilterEnd = manifest.IndexOf("</intent-filter>", intentFilterStart);
+                    if (intentFilterEnd >= 0)
+                    {
+                        string intentFilterBlock = manifest.Substring(
+                            intentFilterStart, 
+                            intentFilterEnd - intentFilterStart + "</intent-filter>".Length
+                        );
+
+                        // Check if this intent-filter contains LAUNCHER
+                        if (intentFilterBlock.Contains("android.intent.category.LAUNCHER") || 
+                            intentFilterBlock.Contains("android.intent.action.MAIN"))
+                        {
+                            // Remove this intent-filter
+                            manifest = manifest.Remove(intentFilterStart, intentFilterEnd - intentFilterStart + "</intent-filter>".Length);
+                            Debug.Log("✅ Removed LAUNCHER intent-filter from AndroidManifest.xml");
+                            break;
+                        }
+                    }
+                    intentFilterStart = manifest.IndexOf("<intent-filter>", intentFilterStart + 1);
+                }
+
+                // Also ensure exported="false" on UnityPlayerActivity
+                manifest = manifest.Replace(
+                    "android:exported=\"true\"",
+                    "android:exported=\"false\""
+                );
+
+                // Change launchMode from singleTask to standard for better embedding
+                manifest = manifest.Replace(
+                    "android:launchMode=\"singleTask\"",
+                    "android:launchMode=\"standard\""
+                );
+
+                // Enable hardware acceleration for better performance
+                manifest = manifest.Replace(
+                    "android:hardwareAccelerated=\"false\"",
+                    "android:hardwareAccelerated=\"true\""
+                );
+
+                if (manifest != originalManifest)
+                {
+                    // Backup original
+                    File.WriteAllText(manifestPath + ".backup", originalManifest);
+                    
+                    // Write fixed manifest
+                    File.WriteAllText(manifestPath, manifest);
+                    
+                    Debug.Log("✅ AndroidManifest.xml fixed for embedded mode");
+                    Debug.Log("   - Removed LAUNCHER intent-filter");
+                    Debug.Log("   - Set exported=false");
+                    Debug.Log("   - Changed launchMode to standard");
+                    Debug.Log($"   - Backup saved to: {manifestPath}.backup");
+                }
+                else
+                {
+                    Debug.Log("ℹ️ AndroidManifest.xml already configured for embedded mode");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to fix AndroidManifest.xml: {e.Message}");
+                Debug.LogError("You may need to manually remove the LAUNCHER intent-filter");
             }
         }
     }

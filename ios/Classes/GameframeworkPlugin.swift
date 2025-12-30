@@ -11,8 +11,12 @@ public class GameframeworkPlugin: NSObject, FlutterPlugin {
 
     private var channel: FlutterMethodChannel?
     private let engineRegistry = GameEngineRegistry.shared
+    private static weak var pluginRegistrar: FlutterPluginRegistrar?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
+        // Store registrar for lazy platform view registration
+        pluginRegistrar = registrar
+        
         let channel = FlutterMethodChannel(
             name: "gameframework",
             binaryMessenger: registrar.messenger()
@@ -21,25 +25,29 @@ public class GameframeworkPlugin: NSObject, FlutterPlugin {
         instance.channel = channel
         registrar.addMethodCallDelegate(instance, channel: channel)
 
-        // Register platform view factories for each registered engine type
-        // Engine plugins will have registered their factories by this point
-        instance.registerPlatformViews(with: registrar)
+        // Don't register platform views immediately - they'll be registered
+        // when engine plugins call registerPlatformView after registering their factories
     }
 
-    private func registerPlatformViews(with registrar: FlutterPluginRegistrar) {
-        let registeredEngines = engineRegistry.getRegisteredEngines()
-
-        for engineType in registeredEngines {
-            let factory = GameEnginePlatformViewFactory(
-                messenger: registrar.messenger(),
-                engineType: engineType
-            )
-
-            registrar.register(
-                factory,
-                withId: "com.xraph.gameframework/\(engineType)"
-            )
+    /// Called by engine plugins after they register their factory
+    /// This allows lazy registration to work around plugin init order issues
+    public static func registerPlatformView(engineType: String) {
+        guard let registrar = pluginRegistrar else {
+            print("⚠️ GameframeworkPlugin: No registrar available for platform view registration")
+            return
         }
+        
+        let factory = GameEnginePlatformViewFactory(
+            messenger: registrar.messenger(),
+            engineType: engineType
+        )
+
+        registrar.register(
+            factory,
+            withId: "com.xraph.gameframework/\(engineType)"
+        )
+        
+        print("✅ Registered platform view: com.xraph.gameframework/\(engineType)")
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

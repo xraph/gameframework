@@ -34,11 +34,11 @@ flutter:
         pluginClass: UnityEnginePlugin
       ios:
         pluginClass: UnityEnginePlugin
+      linux:
+        pluginClass: UnityEnginePlugin
       macos:
         pluginClass: UnityEnginePlugin
       windows:
-        pluginClass: UnityEnginePlugin
-      linux:
         pluginClass: UnityEnginePlugin
 
 dev_dependencies:

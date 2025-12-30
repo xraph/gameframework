@@ -70,8 +70,8 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     private let containerView: UIView
     private var engineView: UIView?
 
-    internal var _isReady = false
-    internal var _isPaused = false
+    open var _isReady = false
+    open var _isPaused = false
 
     private let config: [String: Any]
 

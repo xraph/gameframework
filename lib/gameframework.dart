@@ -46,6 +46,7 @@ export 'src/models/game_engine_config.dart';
 export 'src/models/game_engine_message.dart';
 export 'src/models/game_scene_loaded.dart';
 export 'src/models/game_engine_event.dart';
+export 'src/models/android_platform_view_mode.dart';
 
 // Exceptions
 export 'src/exceptions/game_engine_exception.dart';

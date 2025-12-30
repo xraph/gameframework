@@ -7,14 +7,32 @@ This Unity package provides the C# scripts and native plugins needed to integrat
 ```
 plugin/
 ├── Scripts/
-│   ├── FlutterBridge.cs          # Core bridge for Flutter communication
-│   ├── FlutterSceneManager.cs    # Scene management integration
-│   └── FlutterGameManager.cs     # Example game manager
+│   ├── NativeAPI.cs               # Low-level platform bridge (NEW)
+│   ├── UnityMessageManager.cs     # Message router with callbacks (NEW)
+│   ├── MessageHandler.cs          # Type-safe message handling (NEW)
+│   ├── FlutterBridge.cs           # Core bridge (backward compatible)
+│   ├── FlutterSceneManager.cs     # Scene management integration
+│   ├── FlutterGameManager.cs      # Example game manager
+│   ├── FlutterUtilities.cs        # Helper utilities
+│   ├── FlutterPerformanceMonitor.cs # Performance monitoring
+│   └── Examples/
+│       └── NativeAPIExample.cs    # Complete communication example
 ├── Plugins/
 │   └── iOS/
-│       └── FlutterBridge.mm      # iOS native bridge
-└── README.md                      # This file
+│       └── FlutterBridge.mm       # iOS native bridge (enhanced)
+├── NATIVE_API_GUIDE.md            # Complete communication guide
+└── README.md                       # This file
 ```
+
+### New Communication APIs
+
+The plugin now includes three levels of Unity-Flutter communication based on the [flutter-unity-view-widget](https://github.com/juicycleff/flutter-unity-view-widget) pattern:
+
+1. **NativeAPI.cs** - Low-level platform bridge (iOS/Android)
+2. **UnityMessageManager.cs** - High-level message routing with callbacks
+3. **MessageHandler.cs** - Type-safe message handling with generics
+
+**See [NATIVE_API_GUIDE.md](NATIVE_API_GUIDE.md) for comprehensive documentation.**
 
 ---
 
@@ -61,7 +79,54 @@ plugin/
 
 ---
 
-## Usage
+## Quick Start (New NativeAPI)
+
+### Modern Approach (Recommended)
+
+```csharp
+using Xraph.GameFramework.Unity;
+
+public class GameBootstrap : MonoBehaviour
+{
+    private MessageHandler messageHandler;
+    
+    void Start()
+    {
+        // 1. Initialize NativeAPI
+        NativeAPI.Initialize();
+        
+        // 2. Setup message handler
+        messageHandler = gameObject.AddComponent<MessageHandler>();
+        messageHandler.RegisterHandler<PlayerAction>("PlayerAction", HandleAction);
+        
+        // 3. Notify Flutter when ready
+        NativeAPI.NotifyUnityReady();
+    }
+    
+    void HandleAction(PlayerAction action)
+    {
+        Debug.Log($"Action: {action.type}");
+        
+        // Send response
+        var response = new ActionResponse { success = true };
+        messageHandler.SendMessage("Flutter", "onActionResponse", response);
+    }
+}
+
+[System.Serializable]
+public class PlayerAction { public string type; public float x, y, z; }
+
+[System.Serializable]
+public class ActionResponse { public bool success; public string result; }
+```
+
+**See [NATIVE_API_GUIDE.md](NATIVE_API_GUIDE.md) for complete documentation.**
+
+---
+
+## Usage (Classic FlutterBridge)
+
+The classic FlutterBridge API is still fully supported for backward compatibility.
 
 ### Receiving Messages from Flutter
 

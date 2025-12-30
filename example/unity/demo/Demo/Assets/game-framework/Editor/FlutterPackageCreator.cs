@@ -22,7 +22,7 @@ namespace FlutterUnity.Editor
         private string outputPath = "";
         private Vector2 scrollPosition;
 
-        [MenuItem("Flutter/Create Unity Package", false, 100)]
+        [MenuItem("Game Framework/Create Unity Package", false, 100)]
         public static void ShowWindow()
         {
             var window = GetWindow<FlutterPackageCreator>("Create Flutter Package");

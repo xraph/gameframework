@@ -7,9 +7,15 @@ namespace Xraph.GameFramework.Unity
     /// Manages Unity scene events and notifies Flutter
     ///
     /// This component automatically notifies Flutter when scenes are loaded/unloaded.
-    /// Add this to your startup scene.
+    /// Uses singleton pattern to ensure consistent scene management across scenes.
+    /// 
+    /// Usage:
+    /// <code>
+    /// FlutterSceneManager.Instance.LoadScene("Level2");
+    /// FlutterSceneManager.Instance.LoadSceneAsync("Level3");
+    /// </code>
     /// </summary>
-    public class FlutterSceneManager : MonoBehaviour
+    public class FlutterSceneManager : SingletonMonoBehaviour<FlutterSceneManager>
     {
         [Header("Settings")]
         [Tooltip("Automatically notify Flutter on scene load")]
@@ -18,16 +24,22 @@ namespace Xraph.GameFramework.Unity
         [Tooltip("Automatically notify Flutter on scene unload")]
         public bool notifyOnSceneUnload = true;
 
-        void OnEnable()
+        protected override void SingletonAwake()
         {
+            base.SingletonAwake();
+            
             SceneManager.sceneLoaded += OnSceneLoaded;
             SceneManager.sceneUnloaded += OnSceneUnloaded;
+            
+            Debug.Log("FlutterSceneManager singleton initialized");
         }
 
-        void OnDisable()
+        protected override void OnDestroy()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneUnloaded -= OnSceneUnloaded;
+            
+            base.OnDestroy();
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
