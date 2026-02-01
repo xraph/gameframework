@@ -95,7 +95,14 @@ class _GameWidgetState extends State<GameWidget> {
   void initState() {
     super.initState();
     _viewId = _viewIdCounter++;
-    _initializeEngine();
+    // Delay engine initialization until after the first frame
+    // This ensures the platform view (UiKitView/AndroidView) is created first
+    // and the native method channel handler is ready before we try to communicate
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _initializeEngine();
+      }
+    });
   }
 
   Future<void> _initializeEngine() async {

@@ -13,6 +13,16 @@ public class UnityEnginePlugin: NSObject, FlutterPlugin {
     private static let engineType = "unity"
 
     public static func register(with registrar: FlutterPluginRegistrar) {
+        // Auto-initialize Unity integration with command-line arguments
+        // This eliminates the need for manual AppDelegate modification
+        // Note: launchOptions is not available here, but Unity works without it for most use cases
+        UnityPlayerUtils.shared.InitUnityIntegrationWithOptions(
+            argc: CommandLine.argc,
+            argv: CommandLine.unsafeArgv,
+            nil
+        )
+        NSLog("UnityEnginePlugin: Auto-initialized Unity integration")
+        
         // Register Unity factory with the game framework
         let factory = UnityEngineFactory()
         GameEngineRegistry.shared.registerFactory(

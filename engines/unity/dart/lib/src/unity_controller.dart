@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:gameframework/gameframework.dart';
@@ -38,6 +40,12 @@ class UnityController implements GameEngineController {
     if (_disposed || _eventStreamSetup) return;
 
     try {
+      // On first attempt, add a small delay to give iOS time to fully set up
+      // the platform view and method channel handler
+      if (attempt == 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      
       // Step 1: Request native side to register event handler
       // This will fail with MissingPluginException if platform view not created yet
       final setupResult = await _channel.invokeMethod<bool>('events#setup');
@@ -144,12 +152,19 @@ class UnityController implements GameEngineController {
         },
       );
     } catch (e) {
-      // Handle MissingPluginException - platform view not created yet
-      if (e is MissingPluginException && attempt < maxAttempts) {
-        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms...
-        final delayMs = 50 * (1 << attempt);
+      // Handle MissingPluginException or PlatformException - platform view not created yet
+      // or method not yet implemented on native side
+      final isRetryableError = e is MissingPluginException || 
+          (e is PlatformException && e.code == 'UNAVAILABLE');
+      
+      if (isRetryableError && attempt < maxAttempts) {
+        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1600ms...
+        // Starting at 100ms gives iOS more time to set up
+        final delayMs = 100 * (1 << attempt);
         if (attempt == 0) {
-          // First attempt is expected to fail, don't log
+          // First retry after initial delay
+          debugPrint(
+              'Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
         } else if (attempt < 3) {
           debugPrint(
               'Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
@@ -177,7 +192,7 @@ class UnityController implements GameEngineController {
       if (attempt >= maxAttempts) {
         throw TimeoutException(
           'Platform view not created after $maxAttempts attempts',
-          Duration(milliseconds: 50 * ((1 << maxAttempts) - 1)),
+          Duration(milliseconds: 100 * ((1 << maxAttempts) - 1)),
         );
       }
       rethrow;
@@ -302,6 +317,7 @@ class UnityController implements GameEngineController {
         'target': target,
         'method': method,
         'data': data,
+        'dataType': 'string',
       });
     } catch (e) {
       throw EngineCommunicationException(
@@ -317,14 +333,82 @@ class UnityController implements GameEngineController {
   Future<void> sendJsonMessage(
       String target, String method, Map<String, dynamic> data) async {
     try {
+      // Properly encode to JSON string instead of using toString()
+      final jsonData = jsonEncode(data);
       await _channel.invokeMethod('engine#sendMessage', {
         'target': target,
         'method': method,
-        'data': data.toString(),
+        'data': jsonData,
+        'dataType': 'json',
       });
     } catch (e) {
       throw EngineCommunicationException(
         'Failed to send JSON message: $e',
+        target: target,
+        method: method,
+        engineType: engineType,
+      );
+    }
+  }
+
+  /// Send binary data to Unity (base64 encoded).
+  /// 
+  /// Binary data is automatically encoded to base64 for transmission
+  /// and decoded on the Unity side.
+  /// 
+  /// Example:
+  /// ```dart
+  /// final imageBytes = await file.readAsBytes();
+  /// await controller.sendBinaryMessage('AssetLoader', 'loadTexture', imageBytes);
+  /// ```
+  Future<void> sendBinaryMessage(
+      String target, String method, Uint8List data,
+      {bool compress = false}) async {
+    try {
+      final base64Data = base64Encode(data);
+      await _channel.invokeMethod('engine#sendMessage', {
+        'target': target,
+        'method': method,
+        'data': base64Data,
+        'dataType': compress ? 'compressedBinary' : 'binary',
+      });
+    } catch (e) {
+      throw EngineCommunicationException(
+        'Failed to send binary message: $e',
+        target: target,
+        method: method,
+        engineType: engineType,
+      );
+    }
+  }
+
+  /// Send a typed object to Unity with automatic JSON serialization.
+  /// 
+  /// This is a convenience method that handles JSON encoding for you.
+  /// The object must be JSON-serializable (typically via `toJson()` method).
+  /// 
+  /// Example:
+  /// ```dart
+  /// await controller.sendTypedMessage('GameManager', 'startGame', {
+  ///   'level': 1,
+  ///   'difficulty': 'hard',
+  /// });
+  /// ```
+  Future<void> sendTypedMessage<T>(
+      String target, String method, T data) async {
+    try {
+      final jsonData = data is Map || data is List 
+          ? jsonEncode(data) 
+          : jsonEncode({'value': data});
+      await _channel.invokeMethod('engine#sendMessage', {
+        'target': target,
+        'method': method,
+        'data': jsonData,
+        'dataType': 'json',
+      });
+    } catch (e) {
+      throw EngineCommunicationException(
+        'Failed to send typed message: $e',
         target: target,
         method: method,
         engineType: engineType,

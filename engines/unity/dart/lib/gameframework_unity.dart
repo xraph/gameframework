@@ -28,3 +28,4 @@ library gameframework_unity;
 
 export 'src/unity_controller.dart';
 export 'src/unity_engine_plugin.dart';
+export 'src/unity_message_batcher.dart';

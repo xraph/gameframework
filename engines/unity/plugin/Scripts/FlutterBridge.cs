@@ -9,6 +9,9 @@ namespace Xraph.GameFramework.Unity
     ///
     /// This component enables bidirectional communication between Unity and Flutter.
     /// Add this to a GameObject in your Unity scene and mark it as DontDestroyOnLoad.
+    /// 
+    /// Messages are automatically routed to FlutterMonoBehaviour instances via MessageRouter.
+    /// Legacy GameObject.SendMessage fallback is supported for backward compatibility.
     /// </summary>
     public class FlutterBridge : MonoBehaviour
     {
@@ -36,9 +39,30 @@ namespace Xraph.GameFramework.Unity
         }
 
         /// <summary>
-        /// Event triggered when a message is received from Flutter
+        /// Event triggered when a message is received from Flutter.
+        /// Subscribe to this event for custom message handling.
+        /// Note: Messages are also automatically routed via MessageRouter.
         /// </summary>
         public static event Action<string, string, string> OnFlutterMessage;
+
+        /// <summary>
+        /// Event triggered when a binary message is received from Flutter.
+        /// </summary>
+        public static event Action<string, string, byte[]> OnFlutterBinaryMessage;
+
+        /// <summary>
+        /// Enable debug logging for all messages
+        /// </summary>
+        [SerializeField] private bool enableDebugLogging = false;
+
+        /// <summary>
+        /// Enable/disable debug logging at runtime
+        /// </summary>
+        public bool EnableDebugLogging
+        {
+            get => enableDebugLogging;
+            set => enableDebugLogging = value;
+        }
 
         void Awake()
         {
@@ -50,56 +74,138 @@ namespace Xraph.GameFramework.Unity
 
             _instance = this;
             DontDestroyOnLoad(gameObject);
-            Debug.Log("FlutterBridge initialized");
+            Debug.Log("[FlutterBridge] Initialized");
         }
 
         /// <summary>
-        /// Called from Flutter to send a message to Unity
-        /// This method is called via UnitySendMessage
+        /// Called from Flutter to send a message to Unity.
+        /// This method is called via UnitySendMessage.
         /// </summary>
         /// <param name="message">JSON message containing target, method, and data</param>
         public void ReceiveMessage(string message)
         {
             try
             {
-                Debug.Log($"FlutterBridge: Received message: {message}");
+                if (enableDebugLogging)
+                {
+                    Debug.Log($"[FlutterBridge] Received: {TruncateForLog(message)}");
+                }
+
+                // Check for batch message
+                if (message.Contains("\"batch\":true"))
+                {
+                    HandleBatchMessage(message);
+                    return;
+                }
 
                 // Parse the message (expecting JSON format)
                 var messageData = JsonUtility.FromJson<FlutterMessage>(message);
 
                 if (messageData != null)
                 {
-                    // Trigger the event for listeners
-                    OnFlutterMessage?.Invoke(messageData.target, messageData.method, messageData.data);
-
-                    // Handle the message
-                    HandleMessage(messageData.target, messageData.method, messageData.data);
+                    ProcessMessage(messageData.target, messageData.method, messageData.data, messageData.dataType);
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"FlutterBridge: Error receiving message: {e.Message}");
+                Debug.LogError($"[FlutterBridge] Error receiving message: {e.Message}\n{e.StackTrace}");
                 SendError($"Failed to receive message: {e.Message}");
             }
         }
 
         /// <summary>
-        /// Handle incoming messages from Flutter
-        /// Override this method to add custom message handling
+        /// Process a single message (from direct call or batch).
+        /// </summary>
+        private void ProcessMessage(string target, string method, string data, string dataType = null)
+        {
+            // Trigger event for legacy listeners
+            OnFlutterMessage?.Invoke(target, method, data);
+
+            // Handle binary data
+            if (dataType == "binary" || dataType == "b" || 
+                dataType == "compressedBinary" || dataType == "cb")
+            {
+                HandleBinaryMessage(target, method, data, dataType);
+                return;
+            }
+
+            // Route via MessageRouter (handles FlutterMonoBehaviour and fallback)
+            // MessageRouter is subscribed to OnFlutterMessage event
+        }
+
+        /// <summary>
+        /// Handle binary message (base64 encoded).
+        /// </summary>
+        private void HandleBinaryMessage(string target, string method, string data, string dataType)
+        {
+            try
+            {
+                byte[] binaryData = Convert.FromBase64String(data);
+
+                // Decompress if needed
+                if (dataType == "compressedBinary" || dataType == "cb")
+                {
+                    binaryData = BinaryMessageProtocol.Decompress(binaryData);
+                }
+
+                // Trigger binary event
+                OnFlutterBinaryMessage?.Invoke(target, method, binaryData);
+
+                if (enableDebugLogging)
+                {
+                    Debug.Log($"[FlutterBridge] Binary message: {target}:{method}, {binaryData.Length} bytes");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FlutterBridge] Binary decode failed: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle batch message containing multiple messages.
+        /// </summary>
+        private void HandleBatchMessage(string message)
+        {
+            try
+            {
+                var batch = JsonUtility.FromJson<BatchMessage>(message);
+                if (batch == null || batch.messages == null) return;
+
+                if (enableDebugLogging)
+                {
+                    Debug.Log($"[FlutterBridge] Processing batch of {batch.count} messages");
+                }
+
+                foreach (var msg in batch.messages)
+                {
+                    ProcessMessage(msg.t, msg.m, msg.d, msg.dt);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FlutterBridge] Batch processing failed: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handle incoming messages from Flutter.
+        /// Override this method to add custom message handling.
+        /// Note: MessageRouter handles routing automatically via OnFlutterMessage event.
         /// </summary>
         protected virtual void HandleMessage(string target, string method, string data)
         {
-            Debug.Log($"FlutterBridge: Handling message - Target: {target}, Method: {method}, Data: {data}");
+            if (enableDebugLogging)
+            {
+                Debug.Log($"[FlutterBridge] HandleMessage - Target: {target}, Method: {method}");
+            }
 
-            // Default handling - find the target GameObject and send the message
+            // Fallback to GameObject.SendMessage for backward compatibility
+            // This is now primarily handled by MessageRouter
             GameObject targetObject = GameObject.Find(target);
             if (targetObject != null)
             {
                 targetObject.SendMessage(method, data, SendMessageOptions.DontRequireReceiver);
-            }
-            else
-            {
-                Debug.LogWarning($"FlutterBridge: Target GameObject '{target}' not found");
             }
         }
 
@@ -205,7 +311,50 @@ namespace Xraph.GameFramework.Unity
         }
 #endif
 
-        // Data structures for message passing
+        #region Binary Sending
+
+        /// <summary>
+        /// Send binary data to Flutter.
+        /// </summary>
+        /// <param name="target">Target component</param>
+        /// <param name="method">Method name</param>
+        /// <param name="data">Binary data to send</param>
+        /// <param name="compress">Whether to compress the data</param>
+        public void SendBinaryToFlutter(string target, string method, byte[] data, bool compress = false)
+        {
+            try
+            {
+                string envelope = BinaryMessageProtocol.CreateEnvelope(data, compress);
+                SendToFlutter(target, method, envelope);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[FlutterBridge] SendBinaryToFlutter failed: {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Send large binary data in chunks.
+        /// </summary>
+        public void SendBinaryChunked(string target, string method, byte[] data, int chunkSize = 65536)
+        {
+            BinaryMessageProtocol.SendChunked(target, method, data, chunkSize);
+        }
+
+        #endregion
+
+        #region Utility
+
+        private string TruncateForLog(string message, int maxLength = 200)
+        {
+            if (string.IsNullOrEmpty(message)) return "";
+            if (message.Length <= maxLength) return message;
+            return message.Substring(0, maxLength) + "...";
+        }
+
+        #endregion
+
+        #region Data Structures
 
         [Serializable]
         private class FlutterMessage
@@ -213,6 +362,24 @@ namespace Xraph.GameFramework.Unity
             public string target;
             public string method;
             public string data;
+            public string dataType; // "string", "json", "binary", "compressedBinary"
+        }
+
+        [Serializable]
+        private class BatchMessage
+        {
+            public bool batch;
+            public int count;
+            public BatchItem[] messages;
+        }
+
+        [Serializable]
+        private class BatchItem
+        {
+            public string t; // target (short key for batching)
+            public string m; // method
+            public string d; // data
+            public string dt; // dataType
         }
 
         [Serializable]
@@ -223,5 +390,7 @@ namespace Xraph.GameFramework.Unity
             public bool isLoaded;
             public bool isValid;
         }
+
+        #endregion
     }
 }

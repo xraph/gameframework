@@ -60,6 +60,10 @@ namespace Xraph.GameFramework.Unity.Editor
             Debug.Log($"XCodePostBuild: Main target GUID: {targetGuid}");
             Debug.Log($"XCodePostBuild: Framework target GUID: {frameworkTargetGuid}");
 
+            // Add Data folder to UnityFramework target (CRITICAL for game to work)
+            // Without this, the framework won't contain game data and Unity will fail to initialize
+            AddDataFolderToFramework(proj, pathToBuiltProject, frameworkTargetGuid);
+
             // Configure build settings
             ConfigureBuildSettings(proj, targetGuid, frameworkTargetGuid);
 
@@ -87,15 +91,15 @@ namespace Xraph.GameFramework.Unity.Editor
             proj.SetBuildProperty(targetGuid, "ENABLE_BITCODE", "NO");
             proj.SetBuildProperty(frameworkTargetGuid, "ENABLE_BITCODE", "NO");
 
-            // Set C++ language standard
-            proj.SetBuildProperty(frameworkTargetGuid, "CLANG_CXX_LANGUAGE_STANDARD", "gnu++14");
+            // Set C++ language standard (Unity 2022+ requires C++17)
+            proj.SetBuildProperty(frameworkTargetGuid, "CLANG_CXX_LANGUAGE_STANDARD", "gnu++17");
 
             // Enable modules
             proj.SetBuildProperty(frameworkTargetGuid, "CLANG_ENABLE_MODULES", "YES");
 
-            // Set deployment target
-            proj.SetBuildProperty(targetGuid, "IPHONEOS_DEPLOYMENT_TARGET", "11.0");
-            proj.SetBuildProperty(frameworkTargetGuid, "IPHONEOS_DEPLOYMENT_TARGET", "11.0");
+            // Set deployment target (Unity 2022+ requires iOS 15.0+)
+            proj.SetBuildProperty(targetGuid, "IPHONEOS_DEPLOYMENT_TARGET", "15.0");
+            proj.SetBuildProperty(frameworkTargetGuid, "IPHONEOS_DEPLOYMENT_TARGET", "15.0");
 
             // Enable automatic signing (can be changed in Xcode)
             proj.SetBuildProperty(targetGuid, "CODE_SIGN_STYLE", "Automatic");
@@ -151,6 +155,30 @@ namespace Xraph.GameFramework.Unity.Editor
             proj.AddBuildProperty(frameworkTargetGuid, "LIBRARY_SEARCH_PATHS", "$(PROJECT_DIR)/Libraries");
 
             Debug.Log("XCodePostBuild: Framework search paths configured");
+        }
+
+        /// <summary>
+        /// Add the Data folder to the UnityFramework target
+        /// This is CRITICAL - without it, the built framework won't contain game data
+        /// (scenes, assets, IL2CPP metadata like global-metadata.dat)
+        /// </summary>
+        private static void AddDataFolderToFramework(PBXProject proj, string pathToBuiltProject, string frameworkTargetGuid)
+        {
+            string dataPath = Path.Combine(pathToBuiltProject, "Data");
+            
+            if (!Directory.Exists(dataPath))
+            {
+                Debug.LogWarning($"XCodePostBuild: Data folder not found at {dataPath}");
+                return;
+            }
+
+            // Add the Data folder reference to the project
+            string fileGuid = proj.AddFolderReference(dataPath, "Data");
+            
+            // Add to the UnityFramework target build phase
+            proj.AddFileToBuild(frameworkTargetGuid, fileGuid);
+            
+            Debug.Log("XCodePostBuild: Added Data folder to UnityFramework target");
         }
 
         /// <summary>

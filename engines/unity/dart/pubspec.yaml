@@ -24,7 +24,8 @@ dependencies:
     sdk: flutter
   # For pub.dev release, use: gameframework: ^1.0.0
   # For development, use path:
-  gameframework: 0.0.1
+  gameframework:
+    path: ../../../packages/gameframework
 
 flutter:
   plugin:

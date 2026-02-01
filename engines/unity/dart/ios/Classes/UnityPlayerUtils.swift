@@ -2,6 +2,17 @@ import Foundation
 import UIKit
 import UnityFramework
 
+// MARK: - Global Variables for Unity Initialization
+
+/// Command-line argument count for Unity initialization
+private var gArgc: Int32 = 0
+
+/// Command-line argument values for Unity initialization
+private var gArgv: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>? = nil
+
+/// Application launch options for Unity initialization
+private var appLaunchOpts: [UIApplication.LaunchOptionsKey: Any]? = nil
+
 /// Unity Player utility class for managing Unity framework lifecycle
 ///
 /// Provides utility methods for Unity player management in Flutter integration.
@@ -28,6 +39,65 @@ import UnityFramework
     
     private override init() {
         super.init()
+    }
+    
+    // MARK: - Unity Integration Setup
+    
+    /// Initialize Unity integration with command-line arguments
+    /// Call this from AppDelegate.application(_:didFinishLaunchingWithOptions:)
+    /// 
+    /// - Parameters:
+    ///   - argc: Command-line argument count (CommandLine.argc)
+    ///   - argv: Command-line argument values (CommandLine.unsafeArgv)
+    ///   - launchingOptions: Application launch options from didFinishLaunchingWithOptions
+    @objc public func InitUnityIntegrationWithOptions(
+        argc: Int32,
+        argv: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?,
+        _ launchingOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) {
+        gArgc = argc
+        gArgv = argv
+        appLaunchOpts = launchingOptions
+        NSLog("UnityPlayerUtils: Unity integration options initialized")
+    }
+    
+    /// Initialize and run Unity embedded in the app
+    /// This must be called after InitUnityIntegrationWithOptions
+    /// 
+    /// - Returns: true if Unity was initialized successfully, false otherwise
+    @objc public func initializeUnity() -> Bool {
+        // Check if already initialized
+        if isUnityReady() {
+            NSLog("UnityPlayerUtils: Unity already initialized")
+            return true
+        }
+        
+        // Load Unity framework
+        guard let framework = loadUnityFramework() else {
+            NSLog("UnityPlayerUtils: Failed to load Unity framework")
+            return false
+        }
+        
+        // Set Unity data bundle ID
+        framework.setDataBundleId("com.unity3d.framework")
+        
+        // Run Unity embedded with command-line arguments
+        // This is the critical call that actually starts Unity!
+        framework.runEmbedded(withArgc: gArgc, argv: gArgv, appLaunchOpts: appLaunchOpts)
+        
+        // Set Unity's window level below Flutter's window
+        // This ensures Flutter UI renders on top of Unity, not the other way around
+        if let window = framework.appController()?.window {
+            window.windowLevel = UIWindow.Level(UIWindow.Level.normal.rawValue - 1)
+        }
+        
+        NSLog("UnityPlayerUtils: Unity initialized and running embedded")
+        return true
+    }
+    
+    /// Check if Unity integration options have been set
+    @objc public func isIntegrationInitialized() -> Bool {
+        return gArgv != nil
     }
     
     // MARK: - Unity Framework Management
@@ -201,9 +271,14 @@ import UnityFramework
     
     // MARK: - Utility Methods
     
-    /// Get Unity view
+    /// Get Unity view (uses rootView directly, which is more reliable than rootViewController.view)
     @objc public func getUnityView() -> UIView? {
-        return unityFramework?.appController()?.rootViewController?.view
+        return unityFramework?.appController()?.rootView
+    }
+    
+    /// Check if Unity view is available and ready to be attached
+    @objc public func isUnityViewReady() -> Bool {
+        return unityFramework?.appController()?.rootView != nil
     }
     
     /// Check if Unity is ready
@@ -219,12 +294,6 @@ import UnityFramework
     }
 }
 
-// MARK: - UnityFramework Extension
-
-/// Extension to get Unity framework instance
-extension UnityFramework {
-    @objc public static func getInstance() -> UnityFramework? {
-        return UnityPlayerUtils.shared.getUnityFramework()
-    }
-}
-
+// Note: DO NOT add an extension that overrides UnityFramework.getInstance()
+// The getInstance() method is provided by Unity's UnityFramework class itself
+// and must not be overridden as it would create a circular dependency.

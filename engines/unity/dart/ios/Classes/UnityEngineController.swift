@@ -38,38 +38,40 @@ public class UnityEngineController: GameEngineController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
-            do {
-                // Load Unity framework
-                self.unityFramework = self.loadUnityFramework()
-
-                guard let unity = self.unityFramework else {
-                    self.sendEvent(name: "onError", data: ["message": "Failed to load Unity framework"])
+            let utils = UnityPlayerUtils.shared
+            
+            // Check if Unity integration was initialized in AppDelegate
+            if !utils.isIntegrationInitialized() {
+                NSLog("UnityEngineController: Warning - Unity integration not initialized in AppDelegate")
+                NSLog("UnityEngineController: Call UnityPlayerUtils.shared.InitUnityIntegrationWithOptions() in AppDelegate")
+            }
+            
+            // Initialize Unity if not already done (calls runEmbedded)
+            if !utils.isUnityReady() {
+                guard utils.initializeUnity() else {
+                    self.sendEvent(name: "onError", data: ["message": "Failed to initialize Unity. Make sure Unity integration is initialized in AppDelegate."])
                     return
                 }
-
-                // Set up Unity framework
-                unity.setDataBundleId("com.unity3d.framework")
-                unity.register(self)
-
-                // Show Unity view
-                unity.showUnityWindow()
-
-                // Get Unity view
-                if let unityView = unity.appController()?.rootViewController?.view {
-                    self.unityView = unityView
-                    self.attachEngine()
-                }
-
-                // Mark as ready
-                self._isReady = true
-                self.unityReady = true
-
-                self.sendEvent(name: "onCreated", data: nil)
-                self.sendEvent(name: "onLoaded", data: nil)
-
-            } catch {
-                self.sendEvent(name: "onError", data: ["message": error.localizedDescription])
             }
+            
+            // Get Unity framework from utils
+            guard let unity = utils.getUnityFramework() else {
+                self.sendEvent(name: "onError", data: ["message": "Failed to get Unity framework"])
+                return
+            }
+            
+            self.unityFramework = unity
+            
+            // Register as listener for Unity events
+            unity.register(self)
+            
+            // Show Unity window
+            unity.showUnityWindow()
+
+            // Get Unity view with retry logic
+            // Unity's view hierarchy may not be immediately ready after runEmbedded()
+            // The waitForUnityView method handles retrying and sends events when ready
+            self.waitForUnityView(utils: utils, retries: 10)
         }
     }
 
@@ -77,10 +79,49 @@ public class UnityEngineController: GameEngineController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let unityView = self.unityView else { return }
 
-            if unityView.superview == nil {
-                self.addEngineView(unityView)
-                self.sendEvent(name: "onAttached", data: nil)
+            // Remove Unity view from its current superview if it has one
+            // This is critical - Unity may have added the view to its own window hierarchy
+            if let superview = unityView.superview {
+                unityView.removeFromSuperview()
+                superview.layoutIfNeeded()
             }
+
+            // Add Unity view to our container
+            self.addEngineView(unityView)
+            // Force layout update to ensure Unity view is properly sized
+            unityView.layoutIfNeeded()
+            
+            self.sendEvent(name: "onAttached", data: nil)
+        }
+    }
+    
+    /// Wait for Unity view to become available with retry logic
+    /// Unity's view hierarchy may not be immediately ready after runEmbedded()
+    private func waitForUnityView(utils: UnityPlayerUtils, retries: Int, attempt: Int = 0) {
+        if let unityView = utils.getUnityView() {
+            // Unity view is ready - attach it
+            self.unityView = unityView
+            self.attachEngine()
+            NSLog("UnityEngineController: Unity view attached successfully")
+            
+            // Mark as ready after view is attached
+            self._isReady = true
+            self.unityReady = true
+            
+            self.sendEvent(name: "onCreated", data: nil)
+            self.sendEvent(name: "onLoaded", data: nil)
+        } else if attempt < retries {
+            // Unity view not ready yet, retry after a short delay
+            let delayMs = 100 * (attempt + 1) // 100ms, 200ms, 300ms, 400ms, 500ms
+            NSLog("UnityEngineController: Unity view not ready, retrying in \(delayMs)ms (attempt \(attempt + 1)/\(retries))")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delayMs)) { [weak self] in
+                self?.waitForUnityView(utils: utils, retries: retries, attempt: attempt + 1)
+            }
+        } else {
+            // All retries exhausted
+            NSLog("UnityEngineController: ERROR - Unity view not available after \(retries) attempts")
+            self.sendEvent(name: "onError", data: ["message": "Unity view not available after initialization"])
         }
     }
 

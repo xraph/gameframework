@@ -2,6 +2,21 @@ import Flutter
 import UIKit
 
 /**
+ * Custom container view that automatically resizes engine views to match its bounds
+ */
+class GameEngineContainerView: UIView {
+    weak var engineView: UIView?
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Automatically resize engine view to match container bounds
+        if let engineView = engineView, !bounds.isEmpty {
+            engineView.frame = bounds
+        }
+    }
+}
+
+/**
  * Protocol defining the interface for game engine platform views
  *
  * All engine-specific controllers must implement this protocol.
@@ -67,7 +82,7 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     private let eventChannel: FlutterEventChannel
     private var eventSink: FlutterEventSink?
 
-    private let containerView: UIView
+    private let containerView: GameEngineContainerView
     private var engineView: UIView?
 
     open var _isReady = false
@@ -86,7 +101,7 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
         self.viewId = viewId
         self.messenger = messenger
         self.config = config
-        self.containerView = UIView(frame: frame)
+        self.containerView = GameEngineContainerView(frame: frame)
 
         self.channel = FlutterMethodChannel(
             name: "com.xraph.gameframework/engine_\(viewId)",
@@ -217,6 +232,11 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
             setStreamingCachePath(path)
             result(true)
 
+        case "events#setup":
+            // Event channel is already set up in init
+            // This confirms to Dart that the native handler is ready
+            result(true)
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -259,12 +279,14 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
         view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         containerView.addSubview(view)
         self.engineView = view
+        containerView.engineView = view
     }
 
     /// Remove engine view from container
     public func removeEngineView() {
         engineView?.removeFromSuperview()
         engineView = nil
+        containerView.engineView = nil
     }
 
     /// Get configuration value

@@ -20,6 +20,10 @@ Provides Unity 2022.3.x support for embedding Unity games in Flutter application
 
   # Unity Framework will be added by Unity export
   s.ios.vendored_frameworks = 'UnityFramework.framework'
+  
+  # Preserve Unity Data folder structure (critical for IL2CPP to work)
+  # This ensures the Data folder is copied with the framework to the app bundle
+  s.preserve_paths = 'UnityFramework.framework/Data'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
