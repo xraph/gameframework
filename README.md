@@ -1,4 +1,4 @@
-# Flutter Game Framework
+# Game Framework
 
 A unified, modular framework for embedding multiple game engines (Unity, Unreal Engine) into Flutter applications with bidirectional communication and lifecycle management.
 
@@ -9,7 +9,7 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 
 ## Overview
 
-Flutter Game Framework provides a consistent API for integrating game engines into Flutter applications. Built as a Dart workspace monorepo, it includes:
+Game Framework provides a consistent API for integrating game engines into Flutter applications. Built as a Dart workspace monorepo, it includes:
 
 - **gameframework** - Core framework package with unified engine API
 - **gameframework_unity** - Unity Engine integration plugin
@@ -28,7 +28,7 @@ Flutter Game Framework provides a consistent API for integrating game engines in
 ## Monorepo Structure
 
 ```
-flutter-game-framework/
+gameframework-workspace/
 ├── pubspec.yaml                        # Workspace configuration
 ├── Makefile                            # Build automation
 ├── packages/
@@ -60,8 +60,8 @@ flutter-game-framework/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/xraph/flutter-game-framework.git
-cd flutter-game-framework
+git clone https://github.com/xraph/gameframework.git
+cd gameframework
 ```
 
 2. Bootstrap the workspace:
@@ -312,8 +312,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/xraph/flutter-game-framework/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+- **Issues**: [GitHub Issues](https://github.com/xraph/gameframework/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/xraph/gameframework/discussions)
 - **Documentation**: [docs.gameframework.dev](https://docs.gameframework.dev)
 
 ## Acknowledgments
