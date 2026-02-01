@@ -429,6 +429,24 @@ class UnrealController implements GameEngineController {
   }
 
   @override
+  Future<void> setStreamingCachePath(String path) async {
+    _throwIfDisposed();
+
+    try {
+      await _channel.invokeMethod('engine#setStreamingCachePath', {
+        'path': path,
+      });
+    } catch (e) {
+      throw EngineCommunicationException(
+        'Failed to set streaming cache path: $e',
+        target: 'UnrealController',
+        method: 'setStreamingCachePath',
+        engineType: engineType,
+      );
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     if (_isDisposed) return;
 

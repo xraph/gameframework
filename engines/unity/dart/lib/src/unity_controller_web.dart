@@ -1,6 +1,9 @@
 import 'dart:async';
+// ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+// ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:js' as js;
+import 'package:flutter/foundation.dart';
 import 'package:gameframework/gameframework.dart';
 
 /// Unity WebGL-specific implementation of GameEngineController
@@ -289,6 +292,14 @@ class UnityControllerWeb implements GameEngineController {
   }
 
   @override
+  Future<void> setStreamingCachePath(String path) async {
+    // WebGL doesn't support local file system cache paths
+    // Streaming assets are loaded via HTTP from the web server
+    // This is a no-op for web platform
+    return;
+  }
+
+  @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
@@ -368,7 +379,7 @@ class UnityControllerWeb implements GameEngineController {
       _unityInstance!.callMethod('SetFullscreen', [fullscreen ? 1 : 0]);
     } catch (e) {
       // Fullscreen might not be supported
-      print('Failed to set fullscreen: $e');
+      debugPrint('Failed to set fullscreen: $e');
     }
   }
 }

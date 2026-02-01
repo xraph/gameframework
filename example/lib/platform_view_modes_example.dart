@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:gameframework/gameframework.dart';
-import 'package:gameframework_unity/gameframework_unity.dart';
 
 /// Example demonstrating Android platform view mode switching
 ///
@@ -254,7 +253,7 @@ class PlatformViewModeInfoCard extends StatelessWidget {
               padding: const EdgeInsets.only(left: 32, top: 4),
               child: Row(
                 children: [
-                  Icon(Icons.check, size: 16, color: Colors.green),
+                  const Icon(Icons.check, size: 16, color: Colors.green),
                   const SizedBox(width: 8),
                   Expanded(child: Text(feature)),
                 ],

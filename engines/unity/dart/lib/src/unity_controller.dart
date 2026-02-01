@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:gameframework/gameframework.dart';
 
@@ -150,11 +151,11 @@ class UnityController implements GameEngineController {
         if (attempt == 0) {
           // First attempt is expected to fail, don't log
         } else if (attempt < 3) {
-          print(
+          debugPrint(
               'Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
         } else {
-          print(
-              'Warning: Platform view still not ready after ${attempt} attempts, retrying in ${delayMs}ms');
+          debugPrint(
+              'Warning: Platform view still not ready after $attempt attempts, retrying in ${delayMs}ms');
         }
 
         await Future.delayed(Duration(milliseconds: delayMs));
@@ -271,11 +272,11 @@ class UnityController implements GameEngineController {
         if (attempt == 0) {
           // First attempt failure is expected, don't log
         } else if (attempt < 3) {
-          print(
+          debugPrint(
               'Platform view not ready for create(), retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
         } else {
-          print(
-              'Warning: Platform view still not ready for create() after ${attempt} attempts, retrying in ${delayMs}ms');
+          debugPrint(
+              'Warning: Platform view still not ready for create() after $attempt attempts, retrying in ${delayMs}ms');
         }
 
         await Future.delayed(Duration(milliseconds: delayMs));

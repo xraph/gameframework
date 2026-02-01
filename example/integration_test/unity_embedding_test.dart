@@ -128,15 +128,12 @@ void main() {
     testWidgets('Unity handles dispose during initialization gracefully',
         (WidgetTester tester) async {
       // This test verifies race condition fixes
-      var initStarted = false;
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: GameWidget(
               engineType: GameEngineType.unity,
               onEngineCreated: (controller) {
-                initStarted = true;
                 debugPrint('Unity initialization started');
               },
             ),

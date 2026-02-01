@@ -246,7 +246,7 @@ void main() {
 
   group('createUnityController', () {
     test('should create UnityController instance', () {
-      final config = const GameEngineConfig();
+      const config = GameEngineConfig();
       final controller = createUnityController(1, config);
 
       expect(controller, isA<UnityController>());

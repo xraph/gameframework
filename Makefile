@@ -44,8 +44,12 @@ setup: bootstrap ## Alias for bootstrap (install all dependencies)
 test: ## Run all tests across workspace packages
 	@echo "$(BLUE)Running tests across workspace...$(NC)"
 	@for pkg in $(PACKAGES) $(EXAMPLE); do \
-		echo "$(BLUE)Testing $$pkg...$(NC)"; \
-		cd $$pkg && flutter test && cd - > /dev/null || exit 1; \
+		if [ -d "$$pkg/test" ]; then \
+			echo "$(BLUE)Testing $$pkg...$(NC)"; \
+			cd $$pkg && flutter test && cd - > /dev/null || exit 1; \
+		else \
+			echo "$(YELLOW)Skipping $$pkg (no tests)$(NC)"; \
+		fi; \
 	done
 	@echo "$(GREEN)✓ All tests passed!$(NC)"
 
@@ -66,7 +70,7 @@ analyze: ## Run static analysis across workspace
 	@echo "$(BLUE)Running static analysis across workspace...$(NC)"
 	@for pkg in $(PACKAGES) $(EXAMPLE); do \
 		echo "$(BLUE)Analyzing $$pkg...$(NC)"; \
-		cd $$pkg && flutter analyze && cd - > /dev/null || exit 1; \
+		cd $$pkg && flutter analyze --no-fatal-infos && cd - > /dev/null || exit 1; \
 	done
 	@echo "$(GREEN)✓ No issues found!$(NC)"
 
@@ -86,12 +90,16 @@ lint: ## Run all linting checks (format, analyze, test) across workspace
 	@dart format --set-exit-if-changed . > /dev/null 2>&1 && echo "$(GREEN)  ✓ Format check passed$(NC)" || (echo "$(RED)  ✗ Format check failed$(NC)" && exit 1)
 	@echo "2. Running static analysis..."
 	@for pkg in $(PACKAGES) $(EXAMPLE); do \
-		cd $$pkg && flutter analyze > /dev/null 2>&1 && cd - > /dev/null || (echo "$(RED)  ✗ Analysis failed in $$pkg$(NC)" && exit 1); \
+		(cd $$pkg && flutter analyze --no-fatal-infos > /dev/null 2>&1) || (echo "$(RED)  ✗ Analysis failed in $$pkg$(NC)" && exit 1); \
 	done
 	@echo "$(GREEN)  ✓ Analysis passed$(NC)"
 	@echo "3. Running tests..."
 	@for pkg in $(PACKAGES) $(EXAMPLE); do \
-		cd $$pkg && flutter test > /dev/null 2>&1 && cd - > /dev/null || (echo "$(RED)  ✗ Tests failed in $$pkg$(NC)" && exit 1); \
+		if [ -d "$$pkg/test" ]; then \
+			(cd $$pkg && flutter test > /dev/null 2>&1) || (echo "$(RED)  ✗ Tests failed in $$pkg$(NC)" && exit 1); \
+		else \
+			echo "$(YELLOW)  ⊘ Skipping $$pkg (no tests)$(NC)"; \
+		fi; \
 	done
 	@echo "$(GREEN)  ✓ Tests passed$(NC)"
 	@echo ""

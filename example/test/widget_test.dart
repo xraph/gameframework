@@ -11,16 +11,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gameframework_example/main.dart';
 
 void main() {
-  testWidgets('Verify Platform version', (WidgetTester tester) async {
+  testWidgets('App loads and displays title', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const MyApp());
 
-    // Verify that platform version is retrieved.
+    // Verify that the app title is displayed in AppBar.
     expect(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is Text && widget.data!.startsWith('Running on:'),
-      ),
+      find.widgetWithText(AppBar, 'Flutter Game Framework'),
+      findsOneWidget,
+    );
+
+    // Verify that the games icon is present.
+    expect(
+      find.byIcon(Icons.games),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('App displays Unity example button', (WidgetTester tester) async {
+    // Build our app and trigger a frame.
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+
+    // Verify that Unity Example button is displayed.
+    expect(
+      find.text('Unity Example'),
       findsOneWidget,
     );
   });
