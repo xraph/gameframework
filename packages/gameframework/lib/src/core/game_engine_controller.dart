@@ -84,6 +84,20 @@ abstract class GameEngineController {
   /// This will terminate the engine process
   Future<void> quit();
 
+  /// Set the streaming cache path for addressable assets
+  ///
+  /// This configures the engine to load asset bundles from the specified
+  /// local path instead of remote URLs.
+  ///
+  /// [path] - The local filesystem path to the cache directory
+  ///
+  /// Example:
+  /// ```dart
+  /// final cachePath = await getApplicationCacheDirectory();
+  /// await controller.setStreamingCachePath('${cachePath.path}/streaming');
+  /// ```
+  Future<void> setStreamingCachePath(String path);
+
   /// Dispose of this controller
   /// Called automatically when the widget is disposed
   void dispose();

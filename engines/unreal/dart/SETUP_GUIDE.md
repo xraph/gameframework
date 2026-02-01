@@ -58,7 +58,7 @@ File → New Project
 Copy the Flutter plugin to your Unreal project:
 
 ```bash
-# From flutter-game-framework repository
+# From gameframework repository
 cp -r engines/unreal/plugin YourUnrealProject/Plugins/FlutterPlugin
 ```
 
@@ -704,8 +704,8 @@ journalctl -f | grep flutter
 ### Getting Help
 
 1. Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-2. Search [GitHub Issues](https://github.com/xraph/flutter-game-framework/issues)
-3. Ask on [Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+2. Search [GitHub Issues](https://github.com/xraph/gameframework/issues)
+3. Ask on [Discussions](https://github.com/xraph/gameframework/discussions)
 4. Review Unreal Engine logs in `Saved/Logs/`
 
 ---

@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
 Unity Engine plugin for Flutter Game Framework. Provides Unity integration with
 bidirectional communication, scene management, and lifecycle handling on macOS.
                        DESC
-  s.homepage         = 'https://github.com/xraph/flutter-game-framework'
+  s.homepage         = 'https://github.com/xraph/gameframework'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Xraph' => 'contact@xraph.com' }
 

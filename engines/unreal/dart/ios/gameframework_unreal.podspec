@@ -11,7 +11,7 @@ Unreal Engine 5.x integration plugin for the Flutter Game Framework.
 Provides lifecycle management, bidirectional communication, quality settings,
 console commands, and level loading for Unreal Engine in Flutter apps.
                        DESC
-  s.homepage         = 'https://github.com/xraph/flutter-game-framework'
+  s.homepage         = 'https://github.com/xraph/gameframework'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'xraph' => 'rex@xraph.com' }
   s.source           = { :path => '.' }

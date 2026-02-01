@@ -316,8 +316,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/xraph/flutter-game-framework/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+- **Issues:** [GitHub Issues](https://github.com/xraph/gameframework/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/xraph/gameframework/discussions)
 - **Documentation:** See [docs-files/](docs-files/)
 
 ---

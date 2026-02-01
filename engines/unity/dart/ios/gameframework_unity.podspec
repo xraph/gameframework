@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
 Unity Engine integration plugin for the Flutter Game Framework.
 Provides Unity 2022.3.x support for embedding Unity games in Flutter applications.
                        DESC
-  s.homepage         = 'https://github.com/xraph/flutter-game-framework'
+  s.homepage         = 'https://github.com/xraph/gameframework'
   s.license          = { :file => '../../../LICENSE' }
   s.author           = { 'Xraph' => 'contact@xraph.com' }
   s.source           = { :path => '.' }

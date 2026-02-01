@@ -191,7 +191,7 @@ Not applicable - Initial release.
 
 ### Community Requests
 
-Have a feature request? Open an issue on [GitHub](https://github.com/xraph/flutter-game-framework/issues).
+Have a feature request? Open an issue on [GitHub](https://github.com/xraph/gameframework/issues).
 
 ---
 
@@ -228,9 +228,9 @@ For future releases, we follow this format:
 
 ## Links
 
-- [GitHub Repository](https://github.com/xraph/flutter-game-framework)
-- [Issue Tracker](https://github.com/xraph/flutter-game-framework/issues)
-- [Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+- [GitHub Repository](https://github.com/xraph/gameframework)
+- [Issue Tracker](https://github.com/xraph/gameframework/issues)
+- [Discussions](https://github.com/xraph/gameframework/discussions)
 - [pub.dev Package](https://pub.dev/packages/gameframework_unreal)
 
 ---

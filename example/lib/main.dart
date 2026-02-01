@@ -99,6 +99,26 @@ class HomePage extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const StreamingExampleScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.cloud_download),
+              label: const Text('Streaming Example'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
+                backgroundColor: Colors.teal,
+              ),
+            ),
           ],
         ),
       ),
@@ -419,5 +439,296 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   void dispose() {
     _controller?.dispose();
     super.dispose();
+  }
+}
+
+/// Example screen demonstrating streaming functionality
+class StreamingExampleScreen extends StatefulWidget {
+  const StreamingExampleScreen({super.key});
+
+  @override
+  State<StreamingExampleScreen> createState() => _StreamingExampleScreenState();
+}
+
+class _StreamingExampleScreenState extends State<StreamingExampleScreen> {
+  double _downloadProgress = 0.0;
+  String _statusMessage = 'Streaming not configured';
+  final List<_BundleInfo> _bundles = [];
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Simulate loading bundle info
+    _loadBundleInfo();
+  }
+
+  void _loadBundleInfo() {
+    // In a real app, this would come from GameStreamController.getManifest()
+    setState(() {
+      _bundles.addAll([
+        _BundleInfo(
+          name: 'Base Content',
+          size: '15.2 MB',
+          isBase: true,
+          status: _BundleStatus.bundled,
+        ),
+        _BundleInfo(
+          name: 'Level 1',
+          size: '25.0 MB',
+          isBase: false,
+          status: _BundleStatus.notDownloaded,
+        ),
+        _BundleInfo(
+          name: 'Level 2',
+          size: '32.5 MB',
+          isBase: false,
+          status: _BundleStatus.notDownloaded,
+        ),
+        _BundleInfo(
+          name: 'Characters Pack',
+          size: '45.8 MB',
+          isBase: false,
+          status: _BundleStatus.notDownloaded,
+        ),
+      ]);
+      _isInitialized = true;
+      _statusMessage = 'Ready - Select content to download';
+    });
+  }
+
+  Future<void> _downloadBundle(_BundleInfo bundle) async {
+    if (bundle.isBase || bundle.status == _BundleStatus.downloaded) return;
+
+    setState(() {
+      bundle.status = _BundleStatus.downloading;
+      _statusMessage = 'Downloading ${bundle.name}...';
+    });
+
+    // Simulate download progress
+    for (var i = 0; i <= 100; i += 5) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (!mounted) return;
+      setState(() {
+        _downloadProgress = i / 100;
+      });
+    }
+
+    setState(() {
+      bundle.status = _BundleStatus.downloaded;
+      _downloadProgress = 0;
+      _statusMessage = '${bundle.name} downloaded successfully';
+    });
+  }
+
+  Future<void> _downloadAll() async {
+    for (final bundle in _bundles) {
+      if (bundle.status == _BundleStatus.notDownloaded) {
+        await _downloadBundle(bundle);
+      }
+    }
+    setState(() {
+      _statusMessage = 'All content downloaded';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Streaming Example'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: _downloadAll,
+            tooltip: 'Download All',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Status bar
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: Colors.teal.shade100,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                if (_downloadProgress > 0) ...[
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(value: _downloadProgress),
+                  const SizedBox(height: 4),
+                  Text('${(_downloadProgress * 100).toInt()}%'),
+                ],
+              ],
+            ),
+          ),
+
+          // Info card
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.teal),
+                      SizedBox(width: 8),
+                      Text(
+                        'Streaming Configuration',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'This example demonstrates the streaming API. '
+                    'In a real app, you would:\n'
+                    '1. Configure streaming in .game.yml\n'
+                    '2. Build Unity with Addressables\n'
+                    '3. Publish to GameFramework Cloud\n'
+                    '4. Use GameStreamController to download',
+                    style: TextStyle(color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Bundle list
+          Expanded(
+            child: _isInitialized
+                ? ListView.builder(
+                    itemCount: _bundles.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemBuilder: (context, index) {
+                      final bundle = _bundles[index];
+                      return _BundleTile(
+                        bundle: bundle,
+                        onDownload: () => _downloadBundle(bundle),
+                      );
+                    },
+                  )
+                : const Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _BundleStatus {
+  bundled,
+  notDownloaded,
+  downloading,
+  downloaded,
+}
+
+class _BundleInfo {
+  final String name;
+  final String size;
+  final bool isBase;
+  _BundleStatus status;
+
+  _BundleInfo({
+    required this.name,
+    required this.size,
+    required this.isBase,
+    required this.status,
+  });
+}
+
+class _BundleTile extends StatelessWidget {
+  final _BundleInfo bundle;
+  final VoidCallback onDownload;
+
+  const _BundleTile({
+    required this.bundle,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          _getIcon(),
+          color: _getColor(),
+        ),
+        title: Text(bundle.name),
+        subtitle: Text('${bundle.size} • ${_getStatusText()}'),
+        trailing: _buildTrailing(),
+      ),
+    );
+  }
+
+  IconData _getIcon() {
+    if (bundle.isBase) return Icons.folder;
+    switch (bundle.status) {
+      case _BundleStatus.bundled:
+        return Icons.check_circle;
+      case _BundleStatus.notDownloaded:
+        return Icons.cloud_download;
+      case _BundleStatus.downloading:
+        return Icons.downloading;
+      case _BundleStatus.downloaded:
+        return Icons.check_circle;
+    }
+  }
+
+  Color _getColor() {
+    if (bundle.isBase) return Colors.blue;
+    switch (bundle.status) {
+      case _BundleStatus.bundled:
+        return Colors.green;
+      case _BundleStatus.notDownloaded:
+        return Colors.grey;
+      case _BundleStatus.downloading:
+        return Colors.orange;
+      case _BundleStatus.downloaded:
+        return Colors.green;
+    }
+  }
+
+  String _getStatusText() {
+    if (bundle.isBase) return 'Bundled with app';
+    switch (bundle.status) {
+      case _BundleStatus.bundled:
+        return 'Bundled';
+      case _BundleStatus.notDownloaded:
+        return 'Not downloaded';
+      case _BundleStatus.downloading:
+        return 'Downloading...';
+      case _BundleStatus.downloaded:
+        return 'Downloaded';
+    }
+  }
+
+  Widget? _buildTrailing() {
+    if (bundle.isBase) return null;
+    if (bundle.status == _BundleStatus.downloading) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (bundle.status == _BundleStatus.notDownloaded) {
+      return IconButton(
+        icon: const Icon(Icons.download),
+        onPressed: onDownload,
+      );
+    }
+    return null;
   }
 }

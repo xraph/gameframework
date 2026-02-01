@@ -190,10 +190,29 @@ abstract class GameEngineController(
                 destroyEngine()
                 result.success(null)
             }
+            "streaming#setCachePath" -> {
+                val path = call.argument<String>("path")
+                if (path != null) {
+                    setStreamingCachePath(path)
+                    result.success(true)
+                } else {
+                    result.error("INVALID_ARGS", "Missing path argument", null)
+                }
+            }
             else -> {
                 result.notImplemented()
             }
         }
+    }
+    
+    /**
+     * Set the streaming cache path for addressable assets
+     * Override in engine-specific implementations
+     */
+    protected open fun setStreamingCachePath(path: String) {
+        // Default implementation does nothing
+        // Override in engine-specific controllers
+        Log.d("GameEngineController", "setStreamingCachePath not implemented for this engine")
     }
     
     /**

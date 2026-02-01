@@ -702,8 +702,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](../../CONTRIBUTING.md) f
 ## Support
 
 - 📖 [Documentation](https://pub.dev/packages/gameframework_unreal)
-- 🐛 [Issue Tracker](https://github.com/xraph/flutter-game-framework/issues)
-- 💬 [Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+- 🐛 [Issue Tracker](https://github.com/xraph/gameframework/issues)
+- 💬 [Discussions](https://github.com/xraph/gameframework/discussions)
 
 ## Related Packages
 

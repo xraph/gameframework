@@ -206,9 +206,26 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
             destroyEngine()
             result(nil)
 
+        case "streaming#setCachePath":
+            guard let args = call.arguments as? [String: Any],
+                  let path = args["path"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS",
+                                   message: "Missing path argument",
+                                   details: nil))
+                return
+            }
+            setStreamingCachePath(path)
+            result(true)
+
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+    
+    /// Set streaming cache path - override in engine-specific controllers
+    open func setStreamingCachePath(_ path: String) {
+        // Default implementation does nothing
+        NSLog("GameEngineController: setStreamingCachePath not implemented for this engine")
     }
 
     // MARK: - FlutterStreamHandler

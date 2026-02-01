@@ -233,9 +233,9 @@ dependencies:
   flutter:
     sdk: flutter
   gameframework:
-    path: ../flutter-game-framework
+    path: ../gameframework
   gameframework_unity:
-    path: ../flutter-game-framework/engines/unity/dart
+    path: ../gameframework/engines/unity/dart
 ```
 
 ### 2. Configure Web Assets

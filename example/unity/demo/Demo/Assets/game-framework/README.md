@@ -647,5 +647,5 @@ See LICENSE file in the repository root.
 ## Support
 
 For issues and questions:
-- GitHub: https://github.com/xraph/flutter-game-framework/issues
+- GitHub: https://github.com/xraph/gameframework/issues
 - Documentation: See `engines/unity/dart/README.md` for Flutter-side usage

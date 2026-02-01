@@ -31,6 +31,29 @@ namespace Xraph.GameFramework.Unity.Editor
             string[] args = Environment.GetCommandLineArgs();
             return args.Contains("-development");
         }
+        
+        /// <summary>
+        /// Check if streaming/addressables build is enabled
+        /// </summary>
+        private static bool IsStreamingEnabled()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            return args.Contains("-enableStreaming");
+        }
+        
+        /// <summary>
+        /// Build addressables if streaming is enabled
+        /// </summary>
+        private static bool BuildAddressablesIfEnabled(BuildTarget target)
+        {
+            if (!IsStreamingEnabled())
+            {
+                return true; // Not enabled, skip
+            }
+            
+            Debug.Log("Streaming enabled - building Addressables first...");
+            return FlutterAddressablesBuildScript.BuildAddressablesForPlatform(target);
+        }
 
         private static string[] GetScenes()
         {
@@ -100,6 +123,18 @@ namespace Xraph.GameFramework.Unity.Editor
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
             string buildConfiguration = GetBuildConfiguration();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.Android))
+                {
+                    Debug.LogError("Addressables build failed, aborting Android build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             // Ensure build path exists
             if (!Directory.Exists(buildPath))
@@ -129,6 +164,7 @@ namespace Xraph.GameFramework.Unity.Editor
             Debug.Log($"Building to: {buildPath}");
             Debug.Log($"Development: {isDevelopment}");
             Debug.Log($"Build Configuration: {buildConfiguration}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
             Debug.Log($"Scenes: {string.Join(", ", buildPlayerOptions.scenes)}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
@@ -157,6 +193,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.iOS))
+                {
+                    Debug.LogError("Addressables build failed, aborting iOS build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -178,6 +226,7 @@ namespace Xraph.GameFramework.Unity.Editor
 
             Debug.Log($"Building to: {buildPath}");
             Debug.Log($"Development: {isDevelopment}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -204,6 +253,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneOSX))
+                {
+                    Debug.LogError("Addressables build failed, aborting macOS build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -224,6 +285,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -250,6 +312,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneWindows64))
+                {
+                    Debug.LogError("Addressables build failed, aborting Windows build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -270,6 +344,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -296,6 +371,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneLinux64))
+                {
+                    Debug.LogError("Addressables build failed, aborting Linux build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -316,6 +403,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;

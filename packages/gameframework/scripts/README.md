@@ -49,8 +49,8 @@ chmod +x scripts/dev.sh
 
 ```bash
 # Clone the repo
-git clone https://github.com/xraph/flutter-game-framework.git
-cd flutter-game-framework
+git clone https://github.com/xraph/gameframework.git
+cd gameframework
 
 # Run setup
 ./scripts/dev.sh setup

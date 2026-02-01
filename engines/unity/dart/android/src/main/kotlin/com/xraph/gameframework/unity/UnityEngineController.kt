@@ -429,6 +429,44 @@ class UnityEngineController(
         // Destroy Unity
         destroyEngine()
     }
+    
+    /**
+     * Set the streaming cache path for Unity Addressables
+     * 
+     * This configures Unity to load asset bundles from the specified path
+     * instead of the default remote URLs.
+     */
+    override fun setStreamingCachePath(path: String) {
+        Log.d(TAG, "Setting Unity streaming cache path: $path")
+        
+        try {
+            val cacheDir = java.io.File(path)
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs()
+            }
+            
+            // Set system property for Unity to pick up
+            System.setProperty("unity.streaming-assets-path", cacheDir.absolutePath)
+            
+            // Also send to Unity via message if ready
+            if (unityReady) {
+                sendMessageToEngine(
+                    "FlutterAddressablesManager",
+                    "SetCachePath",
+                    cacheDir.absolutePath
+                )
+            }
+            
+            Log.d(TAG, "Unity streaming cache path set to: ${cacheDir.absolutePath}")
+            sendEventToFlutter("onStreamingCachePathSet", mapOf("path" to cacheDir.absolutePath))
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set streaming cache path: ${e.message}")
+            sendEventToFlutter("onError", mapOf(
+                "message" to "Failed to set streaming cache path: ${e.message}"
+            ))
+        }
+    }
 
     // Unity lifecycle callbacks (called from Unity's C# bridge)
 

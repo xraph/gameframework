@@ -204,6 +204,49 @@ public class UnityEngineController: GameEngineController {
         ])
     }
 
+    // MARK: - Streaming Cache Path
+    
+    /**
+     * Set the streaming cache path for Unity Addressables
+     *
+     * This configures Unity to load asset bundles from the specified path
+     * instead of the default remote URLs.
+     */
+    public override func setStreamingCachePath(_ path: String) {
+        NSLog("UnityEngineController: Setting streaming cache path: \(path)")
+        
+        // Create directory if needed
+        let fileManager = FileManager.default
+        let cacheDir = URL(fileURLWithPath: path)
+        
+        if !fileManager.fileExists(atPath: path) {
+            do {
+                try fileManager.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            } catch {
+                NSLog("UnityEngineController: Failed to create cache directory: \(error)")
+                sendEvent(name: "onError", data: [
+                    "message": "Failed to create cache directory: \(error.localizedDescription)"
+                ])
+                return
+            }
+        }
+        
+        // Set user default for Unity to pick up
+        UserDefaults.standard.set(path, forKey: "unity_streaming_assets_path")
+        
+        // Also send to Unity via message if ready
+        if unityReady {
+            sendMessage(
+                target: "FlutterAddressablesManager",
+                method: "SetCachePath",
+                data: path
+            )
+        }
+        
+        NSLog("UnityEngineController: Streaming cache path set to: \(path)")
+        sendEvent(name: "onStreamingCachePathSet", data: ["path": path])
+    }
+    
     // MARK: - Cleanup
 
     deinit {

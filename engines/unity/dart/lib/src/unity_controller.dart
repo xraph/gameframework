@@ -382,6 +382,22 @@ class UnityController implements GameEngineController {
   }
 
   @override
+  Future<void> setStreamingCachePath(String path) async {
+    try {
+      await _channel.invokeMethod('streaming#setCachePath', {
+        'path': path,
+      });
+    } catch (e) {
+      throw EngineCommunicationException(
+        'Failed to set streaming cache path: $e',
+        target: 'UnityController',
+        method: 'setStreamingCachePath',
+        engineType: engineType,
+      );
+    }
+  }
+
+  @override
   void dispose() {
     if (_disposed) return;
     _disposed = true;
