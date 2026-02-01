@@ -51,8 +51,13 @@ namespace Xraph.GameFramework.Unity.Editor
                 return true; // Not enabled, skip
             }
             
+#if ADDRESSABLES_INSTALLED
             Debug.Log("Streaming enabled - building Addressables first...");
             return FlutterAddressablesBuildScript.BuildAddressablesForPlatform(target);
+#else
+            Debug.LogWarning("Streaming is enabled but Addressables package is not installed. Skipping Addressables build.");
+            return true;
+#endif
         }
 
         private static string[] GetScenes()

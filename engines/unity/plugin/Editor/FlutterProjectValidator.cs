@@ -152,11 +152,11 @@ namespace Xraph.GameFramework.Unity.Editor
         private void ValidatePlatformSettings()
         {
             // Android settings
-            if (PlayerSettings.Android.minSdkVersion < AndroidSdkVersions.AndroidApiLevel22)
+            if (PlayerSettings.Android.minSdkVersion < AndroidSdkVersions.AndroidApiLevel25)
             {
-                AddResult("Android Settings", "minSdkVersion must be at least 21 for Flutter",
+                AddResult("Android Settings", "minSdkVersion must be at least 25 for Flutter",
                     ValidationType.Error, () => {
-                        PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel22;
+                        PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
                     });
             }
             else

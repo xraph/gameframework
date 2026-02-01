@@ -277,7 +277,7 @@ namespace Xraph.GameFramework.Unity.Editor
         private static void ConfigureAndroidSettings()
         {
             // Set Android settings for Flutter integration
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel22;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel25;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevel33;
 
             // Scripting backend
