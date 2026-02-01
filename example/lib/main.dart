@@ -537,34 +537,45 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   }
 
   void _onMessage(GameMessage message) {
-    _log('Message received: ${message.method}');
+    _log('Message received: ${message.data}');
     
-    if (message.method == 'onReady') {
+    // Parse the message data
+    final json = message.asJson();
+    if (json == null) return;
+    
+    final method = json['method'] as String?;
+    if (method == null) return;
+    
+    _log('Method: $method');
+    
+    if (method == 'onReady') {
       setState(() {
         _isReady = true;
         _lastMessage = 'Unity cube demo ready!';
         _direction = '← FROM UNITY';
       });
-    } else if (message.method == 'onSpeedChanged') {
+    } else if (method == 'onSpeedChanged') {
       try {
-        final data = message.data as Map<String, dynamic>;
-        setState(() {
-          _currentSpeed = (data['speed'] as num).toDouble();
-          _currentRpm = (data['rpm'] as num).toDouble();
-          _lastMessage = 'Speed updated';
-          _direction = '← FROM UNITY';
-        });
+        final data = json['data'] as Map<String, dynamic>?;
+        if (data != null) {
+          setState(() {
+            _currentSpeed = (data['speed'] as num?)?.toDouble() ?? 0;
+            _currentRpm = (data['rpm'] as num?)?.toDouble() ?? 0;
+            _lastMessage = 'Speed updated';
+            _direction = '← FROM UNITY';
+          });
+        }
       } catch (e) {
         _log('Error parsing speed data: $e');
       }
-    } else if (message.method == 'onReset') {
+    } else if (method == 'onReset') {
       setState(() {
         _rotationSpeed = 50;
         _rotationAxis = 'Y';
         _lastMessage = 'Cube reset';
         _direction = '← FROM UNITY';
       });
-    } else if (message.method == 'onState') {
+    } else if (method == 'onState') {
       setState(() {
         _lastMessage = 'State received';
         _direction = '← FROM UNITY';
