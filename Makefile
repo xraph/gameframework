@@ -1,10 +1,14 @@
 # Flutter Game Framework - Makefile
-# Cross-platform build automation
+# Monorepo build automation for Dart workspace
 
-.PHONY: help setup test test-watch analyze format format-check clean doctor coverage lint prebuild example build-android build-ios
+.PHONY: help setup bootstrap test test-package test-watch analyze format format-check clean clean-deep doctor list-packages coverage lint prebuild example build-android build-ios version publish-check publish-gameframework publish-unity publish-unreal publish-all gameframework unity unreal all check ci
 
 # Default target
 .DEFAULT_GOAL := help
+
+# Workspace packages
+PACKAGES := packages/gameframework engines/unity/dart engines/unreal/dart
+EXAMPLE := example
 
 # Colors (works on Unix-like systems)
 BLUE := \033[0;34m
@@ -16,34 +20,54 @@ NC := \033[0m # No Color
 ##@ General
 
 help: ## Display this help message
-	@echo "Flutter Game Framework - Build Automation"
+	@echo "Flutter Game Framework - Monorepo Build Automation"
+	@echo ""
+	@echo "$(BLUE)Workspace Packages:$(NC)"
+	@echo "  - packages/gameframework"
+	@echo "  - engines/unity/dart"
+	@echo "  - engines/unreal/dart"
+	@echo "  - example"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Setup & Installation
 
-setup: ## Initial project setup (install all dependencies)
-	@echo "$(BLUE)Setting up Flutter Game Framework...$(NC)"
+bootstrap: ## Bootstrap workspace (resolve all package dependencies)
+	@echo "$(BLUE)Bootstrapping workspace...$(NC)"
 	@flutter pub get
-	@cd example && flutter pub get
-	@cd engines/unity/dart && flutter pub get
-	@cd engines/unreal/dart && flutter pub get
-	@echo "$(GREEN)✓ Setup complete!$(NC)"
+	@echo "$(GREEN)✓ Workspace bootstrapped!$(NC)"
+
+setup: bootstrap ## Alias for bootstrap (install all dependencies)
 
 ##@ Development
 
-test: ## Run all tests
-	@echo "$(BLUE)Running tests...$(NC)"
-	@flutter test
+test: ## Run all tests across workspace packages
+	@echo "$(BLUE)Running tests across workspace...$(NC)"
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		echo "$(BLUE)Testing $$pkg...$(NC)"; \
+		cd $$pkg && flutter test && cd - > /dev/null || exit 1; \
+	done
 	@echo "$(GREEN)✓ All tests passed!$(NC)"
 
-test-watch: ## Run tests in watch mode
+test-package: ## Run tests for specific package (usage: make test-package PKG=packages/gameframework)
+	@if [ -z "$(PKG)" ]; then \
+		echo "$(RED)Error: PKG variable not set. Usage: make test-package PKG=packages/gameframework$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Testing $(PKG)...$(NC)"
+	@cd $(PKG) && flutter test
+	@echo "$(GREEN)✓ Tests passed for $(PKG)!$(NC)"
+
+test-watch: ## Run tests in watch mode (from workspace root)
 	@echo "$(BLUE)Running tests in watch mode...$(NC)"
 	@flutter test --watch
 
-analyze: ## Run static analysis
-	@echo "$(BLUE)Running static analysis...$(NC)"
-	@flutter analyze
+analyze: ## Run static analysis across workspace
+	@echo "$(BLUE)Running static analysis across workspace...$(NC)"
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		echo "$(BLUE)Analyzing $$pkg...$(NC)"; \
+		cd $$pkg && flutter analyze && cd - > /dev/null || exit 1; \
+	done
 	@echo "$(GREEN)✓ No issues found!$(NC)"
 
 format: ## Format all code
@@ -56,14 +80,20 @@ format-check: ## Check code formatting without modifying
 	@dart format --set-exit-if-changed .
 	@echo "$(GREEN)✓ Code is properly formatted!$(NC)"
 
-lint: ## Run all linting checks (format, analyze, test)
-	@echo "$(BLUE)Running all linting checks...$(NC)"
+lint: ## Run all linting checks (format, analyze, test) across workspace
+	@echo "$(BLUE)Running all linting checks across workspace...$(NC)"
 	@echo "1. Checking format..."
 	@dart format --set-exit-if-changed . > /dev/null 2>&1 && echo "$(GREEN)  ✓ Format check passed$(NC)" || (echo "$(RED)  ✗ Format check failed$(NC)" && exit 1)
 	@echo "2. Running static analysis..."
-	@flutter analyze > /dev/null 2>&1 && echo "$(GREEN)  ✓ Analysis passed$(NC)" || (echo "$(RED)  ✗ Analysis failed$(NC)" && exit 1)
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		cd $$pkg && flutter analyze > /dev/null 2>&1 && cd - > /dev/null || (echo "$(RED)  ✗ Analysis failed in $$pkg$(NC)" && exit 1); \
+	done
+	@echo "$(GREEN)  ✓ Analysis passed$(NC)"
 	@echo "3. Running tests..."
-	@flutter test > /dev/null 2>&1 && echo "$(GREEN)  ✓ Tests passed$(NC)" || (echo "$(RED)  ✗ Tests failed$(NC)" && exit 1)
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		cd $$pkg && flutter test > /dev/null 2>&1 && cd - > /dev/null || (echo "$(RED)  ✗ Tests failed in $$pkg$(NC)" && exit 1); \
+	done
+	@echo "$(GREEN)  ✓ Tests passed$(NC)"
 	@echo ""
 	@echo "$(GREEN)✓ All linting checks passed!$(NC)"
 
@@ -73,32 +103,54 @@ prebuild: format-check analyze test ## Run all pre-build checks
 
 ##@ Cleanup
 
-clean: ## Clean all build artifacts
-	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
-	@flutter clean
-	@cd example && flutter clean
-	@cd engines/unity/dart && flutter clean
-	@cd engines/unreal/dart && flutter clean
+clean: ## Clean all build artifacts across workspace
+	@echo "$(BLUE)Cleaning build artifacts across workspace...$(NC)"
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		echo "$(BLUE)Cleaning $$pkg...$(NC)"; \
+		cd $$pkg && flutter clean && cd - > /dev/null; \
+	done
+	@rm -rf .dart_tool
 	@echo "$(GREEN)✓ Clean complete!$(NC)"
+
+clean-deep: clean ## Deep clean (includes pub cache and generated files)
+	@echo "$(BLUE)Performing deep clean...$(NC)"
+	@find . -name "pubspec.lock" -type f -delete
+	@find . -name ".dart_tool" -type d -exec rm -rf {} + 2>/dev/null || true
+	@find . -name "build" -type d -exec rm -rf {} + 2>/dev/null || true
+	@echo "$(GREEN)✓ Deep clean complete!$(NC)"
 
 ##@ Diagnostics
 
-doctor: ## Run Flutter doctor and check dependencies
+doctor: ## Run Flutter doctor and check dependencies across workspace
 	@echo "$(BLUE)Running Flutter Doctor...$(NC)"
 	@flutter doctor -v
 	@echo ""
-	@echo "$(BLUE)Checking Dependencies...$(NC)"
-	@flutter pub outdated || true
-	@echo ""
-	@echo "Unity plugin:"
-	@cd engines/unity/dart && flutter pub outdated || true
-	@echo ""
-	@echo "Unreal plugin:"
-	@cd engines/unreal/dart && flutter pub outdated || true
+	@echo "$(BLUE)Checking Dependencies Across Workspace...$(NC)"
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		echo ""; \
+		echo "$(YELLOW)$$pkg:$(NC)"; \
+		cd $$pkg && flutter pub outdated && cd - > /dev/null || true; \
+	done
 
-coverage: ## Generate test coverage report
-	@echo "$(BLUE)Generating test coverage...$(NC)"
-	@flutter test --coverage
+list-packages: ## List all packages in workspace
+	@echo "$(BLUE)Workspace Packages:$(NC)"
+	@for pkg in $(PACKAGES) $(EXAMPLE); do \
+		name=$$(grep '^name:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		version=$$(grep '^version:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		echo "  $(GREEN)$$pkg$(NC) ($$name@$$version)"; \
+	done
+
+coverage: ## Generate test coverage report for all packages
+	@echo "$(BLUE)Generating test coverage across workspace...$(NC)"
+	@rm -rf coverage
+	@mkdir -p coverage
+	@for pkg in $(PACKAGES); do \
+		echo "$(BLUE)Generating coverage for $$pkg...$(NC)"; \
+		cd $$pkg && flutter test --coverage && cd - > /dev/null; \
+		if [ -f $$pkg/coverage/lcov.info ]; then \
+			cat $$pkg/coverage/lcov.info >> coverage/lcov.info; \
+		fi; \
+	done
 	@echo "$(GREEN)✓ Coverage generated at: coverage/lcov.info$(NC)"
 	@if command -v lcov >/dev/null 2>&1; then \
 		echo "Generating HTML report..."; \
@@ -131,24 +183,59 @@ build-ios: ## Build example for iOS (macOS only)
 
 ##@ Release
 
-version: ## Show current version
-	@echo "Flutter Game Framework"
-	@echo "Version: $$(grep '^version:' pubspec.yaml | awk '{print $$2}')"
-
-publish-check: ## Check if package is ready to publish
-	@echo "$(BLUE)Checking package...$(NC)"
-	@dart pub publish --dry-run
+version: ## Show versions of all packages
+	@echo "$(BLUE)Flutter Game Framework - Package Versions$(NC)"
 	@echo ""
-	@echo "$(GREEN)✓ Publish check complete$(NC)"
+	@for pkg in $(PACKAGES); do \
+		name=$$(grep '^name:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		version=$$(grep '^version:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		echo "  $(GREEN)$$name$(NC): $$version"; \
+	done
 
-publish: ## Publish package to pub.dev
-	@echo "$(BLUE)Publishing package...$(NC)"
-	@dart pub publish
-	@echo "$(GREEN)✓ Package published!$(NC)"
+publish-check: ## Check if all packages are ready to publish
+	@echo "$(BLUE)Checking packages for publishing...$(NC)"
+	@for pkg in $(PACKAGES); do \
+		name=$$(grep '^name:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		echo ""; \
+		echo "$(YELLOW)Checking $$name...$(NC)"; \
+		cd $$pkg && dart pub publish --dry-run && cd - > /dev/null || exit 1; \
+	done
+	@echo ""
+	@echo "$(GREEN)✓ All packages ready to publish!$(NC)"
+
+publish-gameframework: ## Publish gameframework package to pub.dev
+	@echo "$(BLUE)Publishing gameframework...$(NC)"
+	@cd packages/gameframework && dart pub publish
+	@echo "$(GREEN)✓ gameframework published!$(NC)"
+
+publish-unity: ## Publish gameframework_unity package to pub.dev
+	@echo "$(BLUE)Publishing gameframework_unity...$(NC)"
+	@cd engines/unity/dart && dart pub publish
+	@echo "$(GREEN)✓ gameframework_unity published!$(NC)"
+
+publish-unreal: ## Publish gameframework_unreal package to pub.dev
+	@echo "$(BLUE)Publishing gameframework_unreal...$(NC)"
+	@cd engines/unreal/dart && dart pub publish
+	@echo "$(GREEN)✓ gameframework_unreal published!$(NC)"
+
+publish-all: publish-gameframework publish-unity publish-unreal ## Publish all packages to pub.dev (in order)
+	@echo ""
+	@echo "$(GREEN)✓ All packages published!$(NC)"
+
+##@ Package-Specific Commands
+
+gameframework: ## Run tests for gameframework package only
+	@$(MAKE) test-package PKG=packages/gameframework
+
+unity: ## Run tests for gameframework_unity package only
+	@$(MAKE) test-package PKG=engines/unity/dart
+
+unreal: ## Run tests for gameframework_unreal package only
+	@$(MAKE) test-package PKG=engines/unreal/dart
 
 ##@ All-in-one Commands
 
-all: setup test analyze ## Setup and run all checks
+all: bootstrap test analyze ## Bootstrap and run all checks
 	@echo ""
 	@echo "$(GREEN)✓ All tasks completed successfully!$(NC)"
 
