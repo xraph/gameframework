@@ -85,8 +85,7 @@ class ContentManifest {
   int get totalSize => bundles.fold<int>(0, (sum, b) => sum + b.sizeBytes);
 
   /// Size of base content
-  int get baseSize =>
-      baseBundles.fold<int>(0, (sum, b) => sum + b.sizeBytes);
+  int get baseSize => baseBundles.fold<int>(0, (sum, b) => sum + b.sizeBytes);
 
   /// Size of streaming content
   int get streamingSize =>

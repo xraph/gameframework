@@ -119,10 +119,11 @@ class _GameWidgetState extends State<GameWidget> {
 
       // Notify the app that engine is created
       widget.onEngineCreated(controller);
-      
+
       // Auto-start engine if configured
       if (widget.config.runImmediately) {
-        debugPrint('Auto-starting ${widget.engineType.engineName} engine (runImmediately: true)');
+        debugPrint(
+            'Auto-starting ${widget.engineType.engineName} engine (runImmediately: true)');
         try {
           await controller.create();
         } catch (e) {

@@ -121,7 +121,8 @@ void main() {
       expect(pauseCount, equals(3));
       expect(resumeCount, equals(3));
 
-      debugPrint('✅ Lifecycle test passed: $pauseCount pause, $resumeCount resume');
+      debugPrint(
+          '✅ Lifecycle test passed: $pauseCount pause, $resumeCount resume');
     });
 
     testWidgets('Unity handles dispose during initialization gracefully',
@@ -188,12 +189,12 @@ void main() {
       expect(gameWidget, findsOneWidget);
 
       // Verify it has a size
-      final RenderBox box =
-          tester.renderObject(gameWidget) as RenderBox;
+      final RenderBox box = tester.renderObject(gameWidget) as RenderBox;
       expect(box.size.width, greaterThan(0));
       expect(box.size.height, greaterThan(0));
 
-      debugPrint('✅ View sizing test passed: ${box.size.width}x${box.size.height}');
+      debugPrint(
+          '✅ View sizing test passed: ${box.size.width}x${box.size.height}');
     });
 
     testWidgets('Multiple GameWidgets do not interfere',
@@ -275,7 +276,8 @@ void main() {
       // Wait for Unity to fully initialize
       await tester.pumpAndSettle(const Duration(seconds: 7));
 
-      expect(engineReady, isTrue, reason: 'Unity should be ready and rendering');
+      expect(engineReady, isTrue,
+          reason: 'Unity should be ready and rendering');
 
       debugPrint('✅ Black screen prevention test passed');
     });
@@ -312,4 +314,3 @@ void main() {
     });
   });
 }
-

@@ -64,4 +64,3 @@ extension AndroidPlatformViewModeExtension on AndroidPlatformViewMode {
     }
   }
 }
-

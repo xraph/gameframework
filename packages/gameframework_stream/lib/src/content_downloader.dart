@@ -86,14 +86,14 @@ class ContentDownloader {
     if (strategy == DownloadStrategy.any) return true;
 
     final connectivity = await Connectivity().checkConnectivity();
-    
+
     if (connectivity.contains(ConnectivityResult.wifi)) {
       return true;
     }
 
-    if (strategy.allowsCellular && 
+    if (strategy.allowsCellular &&
         (connectivity.contains(ConnectivityResult.mobile) ||
-         connectivity.contains(ConnectivityResult.ethernet))) {
+            connectivity.contains(ConnectivityResult.ethernet))) {
       return true;
     }
 
@@ -167,9 +167,8 @@ class ContentDownloader {
       final bytesPerSecond =
           elapsedSeconds > 0 ? (downloadedBytes / elapsedSeconds).round() : 0;
       final remainingBytes = totalBytes - downloadedBytes;
-      final eta = bytesPerSecond > 0
-          ? (remainingBytes / bytesPerSecond).round()
-          : null;
+      final eta =
+          bytesPerSecond > 0 ? (remainingBytes / bytesPerSecond).round() : null;
 
       final progress = DownloadProgress(
         bundleName: bundle.name,

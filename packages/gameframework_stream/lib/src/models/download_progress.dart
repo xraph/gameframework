@@ -82,7 +82,8 @@ class DownloadProgress {
   String get percentageString => '${(percentage * 100).toInt()}%';
 
   /// Whether the download is complete
-  bool get isComplete => state == DownloadState.completed || state == DownloadState.cached;
+  bool get isComplete =>
+      state == DownloadState.completed || state == DownloadState.cached;
 
   /// Whether the download failed
   bool get isFailed => state == DownloadState.failed;

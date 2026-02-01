@@ -30,22 +30,23 @@ class UnityController implements GameEngineController {
 
   /// Set up event stream with explicit native confirmation
   /// This eliminates race conditions by using method channel handshake
-  /// 
+  ///
   /// Uses polling with exponential backoff to wait for platform view creation
-  Future<void> _setupEventStream({int attempt = 0, int maxAttempts = 10}) async {
+  Future<void> _setupEventStream(
+      {int attempt = 0, int maxAttempts = 10}) async {
     if (_disposed || _eventStreamSetup) return;
-    
+
     try {
       // Step 1: Request native side to register event handler
       // This will fail with MissingPluginException if platform view not created yet
       final setupResult = await _channel.invokeMethod<bool>('events#setup');
-      
+
       if (setupResult != true) {
         throw Exception('Native event setup returned false or null');
       }
-      
+
       _eventStreamSetup = true;
-      
+
       // Step 2: Native handler is now guaranteed to be registered
       // We can safely subscribe to the event stream
       _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
@@ -149,26 +150,29 @@ class UnityController implements GameEngineController {
         if (attempt == 0) {
           // First attempt is expected to fail, don't log
         } else if (attempt < 3) {
-          print('Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
+          print(
+              'Platform view not ready, retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
         } else {
-          print('Warning: Platform view still not ready after ${attempt} attempts, retrying in ${delayMs}ms');
+          print(
+              'Warning: Platform view still not ready after ${attempt} attempts, retrying in ${delayMs}ms');
         }
-        
+
         await Future.delayed(Duration(milliseconds: delayMs));
-        return _setupEventStream(attempt: attempt + 1, maxAttempts: maxAttempts);
+        return _setupEventStream(
+            attempt: attempt + 1, maxAttempts: maxAttempts);
       }
-      
+
       // Fatal error or max retries exceeded
       final message = attempt >= maxAttempts
           ? 'Platform view creation timeout after $maxAttempts attempts'
           : 'Failed to setup event stream: $e';
-      
+
       _eventController.add(GameEngineEvent(
         type: GameEngineEventType.error,
         timestamp: DateTime.now(),
         message: message,
       ));
-      
+
       if (attempt >= maxAttempts) {
         throw TimeoutException(
           'Platform view not created after $maxAttempts attempts',
@@ -267,15 +271,17 @@ class UnityController implements GameEngineController {
         if (attempt == 0) {
           // First attempt failure is expected, don't log
         } else if (attempt < 3) {
-          print('Platform view not ready for create(), retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
+          print(
+              'Platform view not ready for create(), retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
         } else {
-          print('Warning: Platform view still not ready for create() after ${attempt} attempts, retrying in ${delayMs}ms');
+          print(
+              'Warning: Platform view still not ready for create() after ${attempt} attempts, retrying in ${delayMs}ms');
         }
-        
+
         await Future.delayed(Duration(milliseconds: delayMs));
         return create(attempt: attempt + 1, maxAttempts: maxAttempts);
       }
-      
+
       // Fatal error or max retries exceeded
       throw EngineCommunicationException(
         attempt >= maxAttempts
@@ -410,6 +416,7 @@ class UnityController implements GameEngineController {
 }
 
 /// Platform-specific controller creation for mobile/desktop
-GameEngineController createUnityController(int viewId, GameEngineConfig config) {
+GameEngineController createUnityController(
+    int viewId, GameEngineConfig config) {
   return UnityController(viewId);
 }

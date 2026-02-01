@@ -48,7 +48,8 @@ class CacheManager {
   }
 
   /// Check if a bundle is cached with matching hash
-  Future<bool> isCachedWithHash(String bundleName, String expectedSha256) async {
+  Future<bool> isCachedWithHash(
+      String bundleName, String expectedSha256) async {
     if (!await isCached(bundleName)) return false;
 
     final entry = _cacheManifest[bundleName];
@@ -212,7 +213,8 @@ class CacheManager {
 
       _cacheManifest = {};
       entries?.forEach((key, value) {
-        _cacheManifest[key] = CacheEntry.fromJson(value as Map<String, dynamic>);
+        _cacheManifest[key] =
+            CacheEntry.fromJson(value as Map<String, dynamic>);
       });
     } catch (e) {
       // Invalid manifest, start fresh

@@ -1,6 +1,6 @@
 name: gameframework_stream
 description: Asset streaming support for Flutter Game Framework. Enables on-demand downloading of Unity Addressable assets from GameFramework Cloud.
-version: 1.0.0
+version: 0.0.1
 homepage: https://github.com/xraph/flutter-game-framework
 repository: https://github.com/xraph/flutter-game-framework
 issue_tracker: https://github.com/xraph/flutter-game-framework/issues
@@ -22,7 +22,7 @@ resolution: workspace
 dependencies:
   flutter:
     sdk: flutter
-  gameframework: 1.0.0
+  gameframework: 0.0.1
   http: ^1.2.0
   path_provider: ^2.1.1
   crypto: ^3.0.3

@@ -55,4 +55,4 @@ export 'src/exceptions/game_engine_exception.dart';
 export 'src/utils/platform_info.dart';
 
 /// Current version of the Flutter Game Framework
-const String gameFrameworkVersion = '0.4.0';
+const String gameFrameworkVersion = '0.0.1';

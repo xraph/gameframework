@@ -86,7 +86,9 @@ class ContentBundle {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is ContentBundle && other.name == name && other.sha256 == sha256;
+    return other is ContentBundle &&
+        other.name == name &&
+        other.sha256 == sha256;
   }
 
   @override

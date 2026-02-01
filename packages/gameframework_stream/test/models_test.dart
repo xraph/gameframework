@@ -48,21 +48,33 @@ void main() {
     test('formattedSize returns human-readable size', () {
       expect(
         ContentBundle(
-          name: 'a', url: '', sizeBytes: 500, sha256: '', isBase: false,
+          name: 'a',
+          url: '',
+          sizeBytes: 500,
+          sha256: '',
+          isBase: false,
         ).formattedSize,
         equals('500 B'),
       );
-      
+
       expect(
         ContentBundle(
-          name: 'a', url: '', sizeBytes: 1536, sha256: '', isBase: false,
+          name: 'a',
+          url: '',
+          sizeBytes: 1536,
+          sha256: '',
+          isBase: false,
         ).formattedSize,
         equals('1.5 KB'),
       );
-      
+
       expect(
         ContentBundle(
-          name: 'a', url: '', sizeBytes: 5242880, sha256: '', isBase: false,
+          name: 'a',
+          url: '',
+          sizeBytes: 5242880,
+          sha256: '',
+          isBase: false,
         ).formattedSize,
         equals('5.0 MB'),
       );
@@ -75,8 +87,20 @@ void main() {
         'version': '1.0.0',
         'baseUrl': 'https://cdn.example.com',
         'bundles': [
-          {'name': 'base.bundle', 'url': 'url1', 'sizeBytes': 1000, 'sha256': 'a', 'isBase': true},
-          {'name': 'level1.bundle', 'url': 'url2', 'sizeBytes': 2000, 'sha256': 'b', 'isBase': false},
+          {
+            'name': 'base.bundle',
+            'url': 'url1',
+            'sizeBytes': 1000,
+            'sha256': 'a',
+            'isBase': true
+          },
+          {
+            'name': 'level1.bundle',
+            'url': 'url2',
+            'sizeBytes': 2000,
+            'sha256': 'b',
+            'isBase': false
+          },
         ],
         'buildTime': '2024-01-15T10:30:00Z',
         'platform': 'Android',
@@ -95,8 +119,18 @@ void main() {
         version: '1.0.0',
         baseUrl: 'https://example.com',
         bundles: [
-          ContentBundle(name: 'base', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true),
-          ContentBundle(name: 'streaming', url: 'u2', sizeBytes: 200, sha256: 'b', isBase: false),
+          ContentBundle(
+              name: 'base',
+              url: 'u1',
+              sizeBytes: 100,
+              sha256: 'a',
+              isBase: true),
+          ContentBundle(
+              name: 'streaming',
+              url: 'u2',
+              sizeBytes: 200,
+              sha256: 'b',
+              isBase: false),
         ],
       );
 
@@ -109,8 +143,18 @@ void main() {
         version: '1.0.0',
         baseUrl: 'https://example.com',
         bundles: [
-          ContentBundle(name: 'base', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true),
-          ContentBundle(name: 'streaming', url: 'u2', sizeBytes: 200, sha256: 'b', isBase: false),
+          ContentBundle(
+              name: 'base',
+              url: 'u1',
+              sizeBytes: 100,
+              sha256: 'a',
+              isBase: true),
+          ContentBundle(
+              name: 'streaming',
+              url: 'u2',
+              sizeBytes: 200,
+              sha256: 'b',
+              isBase: false),
         ],
       );
 
@@ -123,9 +167,12 @@ void main() {
         version: '1.0.0',
         baseUrl: 'https://example.com',
         bundles: [
-          ContentBundle(name: 'a', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true),
-          ContentBundle(name: 'b', url: 'u2', sizeBytes: 200, sha256: 'b', isBase: false),
-          ContentBundle(name: 'c', url: 'u3', sizeBytes: 300, sha256: 'c', isBase: false),
+          ContentBundle(
+              name: 'a', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true),
+          ContentBundle(
+              name: 'b', url: 'u2', sizeBytes: 200, sha256: 'b', isBase: false),
+          ContentBundle(
+              name: 'c', url: 'u3', sizeBytes: 300, sha256: 'c', isBase: false),
         ],
       );
 
@@ -139,7 +186,12 @@ void main() {
         version: '1.0.0',
         baseUrl: 'https://example.com',
         bundles: [
-          ContentBundle(name: 'target', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true),
+          ContentBundle(
+              name: 'target',
+              url: 'u1',
+              sizeBytes: 100,
+              sha256: 'a',
+              isBase: true),
         ],
       );
 
@@ -152,14 +204,32 @@ void main() {
         version: '1.0.0',
         baseUrl: 'https://example.com',
         bundles: [
-          ContentBundle(name: 'base', url: 'u1', sizeBytes: 100, sha256: 'a', isBase: true, dependencies: []),
-          ContentBundle(name: 'level1', url: 'u2', sizeBytes: 200, sha256: 'b', isBase: false, dependencies: ['base']),
-          ContentBundle(name: 'level2', url: 'u3', sizeBytes: 300, sha256: 'c', isBase: false, dependencies: ['level1']),
+          ContentBundle(
+              name: 'base',
+              url: 'u1',
+              sizeBytes: 100,
+              sha256: 'a',
+              isBase: true,
+              dependencies: []),
+          ContentBundle(
+              name: 'level1',
+              url: 'u2',
+              sizeBytes: 200,
+              sha256: 'b',
+              isBase: false,
+              dependencies: ['base']),
+          ContentBundle(
+              name: 'level2',
+              url: 'u3',
+              sizeBytes: 300,
+              sha256: 'c',
+              isBase: false,
+              dependencies: ['level1']),
         ],
       );
 
       final deps = manifest.resolveDependencies('level2');
-      
+
       expect(deps.length, equals(3));
       expect(deps[0].name, equals('base'));
       expect(deps[1].name, equals('level1'));

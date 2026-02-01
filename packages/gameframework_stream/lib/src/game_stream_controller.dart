@@ -297,7 +297,8 @@ class GameStreamController {
     if (!_isInitialized) {
       throw StreamingError(
         type: StreamingErrorType.notInitialized,
-        message: 'GameStreamController not initialized. Call initialize() first.',
+        message:
+            'GameStreamController not initialized. Call initialize() first.',
       );
     }
   }
@@ -310,13 +311,15 @@ class GameStreamController {
   }
 
   Future<ContentManifest> _fetchManifest() async {
-    final url = '$cloudUrl/v1/packages/$packageName/versions/$packageVersion/manifest.json';
+    final url =
+        '$cloudUrl/v1/packages/$packageName/versions/$packageVersion/manifest.json';
 
     try {
       final response = await _httpClient.get(Uri.parse(url));
 
       if (response.statusCode != 200) {
-        throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+        throw Exception(
+            'HTTP ${response.statusCode}: ${response.reasonPhrase}');
       }
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;

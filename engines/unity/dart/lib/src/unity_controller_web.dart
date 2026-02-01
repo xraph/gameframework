@@ -138,7 +138,8 @@ class UnityControllerWeb implements GameEngineController {
         'frameworkUrl': frameworkUrl ?? '$buildUrl/Build.framework.js',
         'codeUrl': codeUrl ?? '$buildUrl/Build.wasm',
         'streamingAssetsUrl': '$buildUrl/StreamingAssets',
-        'companyName': _getConfigValue<String>('companyName') ?? 'DefaultCompany',
+        'companyName':
+            _getConfigValue<String>('companyName') ?? 'DefaultCompany',
         'productName': _getConfigValue<String>('productName') ?? 'Unity Game',
         'productVersion': _getConfigValue<String>('productVersion') ?? '1.0',
       });
@@ -207,8 +208,8 @@ class UnityControllerWeb implements GameEngineController {
     String method,
     Map<String, dynamic> data,
   ) async {
-    final jsonString = js.context['JSON']
-        .callMethod('stringify', [js.JsObject.jsify(data)]);
+    final jsonString =
+        js.context['JSON'].callMethod('stringify', [js.JsObject.jsify(data)]);
     await sendMessage(target, method, jsonString.toString());
   }
 
@@ -373,6 +374,7 @@ class UnityControllerWeb implements GameEngineController {
 }
 
 /// Platform-specific controller creation for web
-GameEngineController createUnityController(int viewId, GameEngineConfig config) {
+GameEngineController createUnityController(
+    int viewId, GameEngineConfig config) {
   return UnityControllerWeb(viewId, config);
 }

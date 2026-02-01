@@ -139,13 +139,15 @@ class UnrealQualitySettings {
   Map<String, dynamic> toMap() {
     return {
       if (qualityLevel != null) 'qualityLevel': qualityLevel,
-      if (antiAliasingQuality != null) 'antiAliasingQuality': antiAliasingQuality,
+      if (antiAliasingQuality != null)
+        'antiAliasingQuality': antiAliasingQuality,
       if (shadowQuality != null) 'shadowQuality': shadowQuality,
       if (postProcessQuality != null) 'postProcessQuality': postProcessQuality,
       if (textureQuality != null) 'textureQuality': textureQuality,
       if (effectsQuality != null) 'effectsQuality': effectsQuality,
       if (foliageQuality != null) 'foliageQuality': foliageQuality,
-      if (viewDistanceQuality != null) 'viewDistanceQuality': viewDistanceQuality,
+      if (viewDistanceQuality != null)
+        'viewDistanceQuality': viewDistanceQuality,
       if (targetFrameRate != null) 'targetFrameRate': targetFrameRate,
       if (enableVSync != null) 'enableVSync': enableVSync,
       if (resolutionScale != null) 'resolutionScale': resolutionScale,

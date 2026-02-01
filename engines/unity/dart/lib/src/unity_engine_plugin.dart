@@ -1,7 +1,7 @@
 import 'package:gameframework/gameframework.dart';
 import 'unity_controller.dart';
-import 'unity_controller_web.dart'
-    if (dart.library.io) 'unity_controller.dart' as platform;
+import 'unity_controller_web.dart' if (dart.library.io) 'unity_controller.dart'
+    as platform;
 
 /// Unity Engine Plugin for Flutter Game Framework
 ///

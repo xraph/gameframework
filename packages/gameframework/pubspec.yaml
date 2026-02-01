@@ -1,6 +1,6 @@
 name: gameframework
 description: A unified, modular framework for embedding multiple game engines (Unity, Unreal Engine) into Flutter applications with bidirectional communication and lifecycle management.
-version: 1.0.0
+version: 0.0.1
 homepage: https://github.com/xraph/gameframework
 repository: https://github.com/xraph/gameframework
 issue_tracker: https://github.com/xraph/gameframework/issues

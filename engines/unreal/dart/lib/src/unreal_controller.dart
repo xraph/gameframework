@@ -267,7 +267,8 @@ class UnrealController implements GameEngineController {
     _throwIfNotReady();
 
     try {
-      await _channel.invokeMethod('engine#applyQualitySettings', settings.toMap());
+      await _channel.invokeMethod(
+          'engine#applyQualitySettings', settings.toMap());
     } catch (e) {
       throw EngineCommunicationException(
         'Failed to apply quality settings: $e',
@@ -284,7 +285,8 @@ class UnrealController implements GameEngineController {
     _throwIfNotReady();
 
     try {
-      final result = await _channel.invokeMethod<Map>('engine#getQualitySettings');
+      final result =
+          await _channel.invokeMethod<Map>('engine#getQualitySettings');
       if (result == null) {
         throw EngineCommunicationException(
           'Failed to get quality settings: null result',

@@ -76,7 +76,8 @@ class GameEngineConfig {
       enableDebugLogs: enableDebugLogs ?? this.enableDebugLogs,
       targetFrameRate: targetFrameRate ?? this.targetFrameRate,
       engineSpecificConfig: engineSpecificConfig ?? this.engineSpecificConfig,
-      androidPlatformViewMode: androidPlatformViewMode ?? this.androidPlatformViewMode,
+      androidPlatformViewMode:
+          androidPlatformViewMode ?? this.androidPlatformViewMode,
     );
   }
 

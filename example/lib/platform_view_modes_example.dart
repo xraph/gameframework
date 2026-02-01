@@ -63,15 +63,14 @@ class _PlatformViewModesExampleState extends State<PlatformViewModesExample> {
                   value: AndroidPlatformViewMode.hybridComposition,
                   label: const Text('Hybrid'),
                   icon: const Icon(Icons.layers),
-                  tooltip: AndroidPlatformViewMode
-                      .hybridComposition.description,
+                  tooltip:
+                      AndroidPlatformViewMode.hybridComposition.description,
                 ),
                 ButtonSegment(
                   value: AndroidPlatformViewMode.virtualDisplay,
                   label: const Text('Virtual Display'),
                   icon: const Icon(Icons.view_in_ar),
-                  tooltip:
-                      AndroidPlatformViewMode.virtualDisplay.description,
+                  tooltip: AndroidPlatformViewMode.virtualDisplay.description,
                 ),
               ],
               selected: {_currentMode},
@@ -159,7 +158,9 @@ class _PlatformViewModesExampleState extends State<PlatformViewModesExample> {
                   ? 'Engine Ready (${_currentMode.displayName})'
                   : 'Initializing engine...',
               style: TextStyle(
-                color: _isEngineReady ? Colors.green.shade900 : Colors.orange.shade900,
+                color: _isEngineReady
+                    ? Colors.green.shade900
+                    : Colors.orange.shade900,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -263,4 +264,3 @@ class PlatformViewModeInfoCard extends StatelessWidget {
     );
   }
 }
-

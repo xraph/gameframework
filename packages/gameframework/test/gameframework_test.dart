@@ -400,7 +400,7 @@ void main() {
     test('should have valid version', () {
       expect(gameFrameworkVersion, isNotNull);
       expect(gameFrameworkVersion.isNotEmpty, true);
-      expect(gameFrameworkVersion, '0.4.0');
+      expect(gameFrameworkVersion, '0.0.1');
     });
   });
 }
