@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:gameframework/gameframework.dart';
 import 'package:gameframework_unity/gameframework_unity.dart';
@@ -135,58 +136,31 @@ class UnityExampleScreen extends StatefulWidget {
 
 class _UnityExampleScreenState extends State<UnityExampleScreen> {
   GameEngineController? _controller;
-  String _statusMessage = 'Initializing...';
-  int _score = 0;
-  bool _isEngineReady = false;
+  double _rotationSpeed = 50.0;
+  String _rotationAxis = 'Y';
+  bool _isReady = false;
+  String _lastMessage = 'Initializing...';
+  String _direction = '---';
+  double _currentSpeed = 0;
+  double _currentRpm = 0;
   final List<String> _logs = [];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Unity Example'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _showInfoDialog(context),
-          ),
-        ],
+    return Theme(
+      data: ThemeData.dark().copyWith(
+        sliderTheme: SliderThemeData(
+          activeTrackColor: Colors.blueAccent,
+          thumbColor: Colors.blue,
+          overlayColor: Colors.blue.withOpacity(0.2),
+        ),
       ),
-      body: Column(
-        children: [
-          // Status bar
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color:
-                _isEngineReady ? Colors.green.shade100 : Colors.orange.shade100,
-            child: Row(
-              children: [
-                Icon(
-                  _isEngineReady ? Icons.check_circle : Icons.pending,
-                  color: _isEngineReady ? Colors.green : Colors.orange,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _statusMessage,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Text(
-                  'Score: $_score',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Game view
-          Expanded(
-            child: GameWidget(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // Unity game view (full screen)
+            GameWidget(
               engineType: GameEngineType.unity,
               onEngineCreated: _onEngineCreated,
               onMessage: _onMessage,
@@ -197,114 +171,360 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
                 enableDebugLogs: true,
               ),
             ),
-          ),
-
-          // Control panel
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+            
+            // Overlay UI - Top info card
+            Positioned(
+              top: 50,
+              left: 20,
+              right: 20,
+              child: _buildInfoCard(),
             ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildControlButton(
-                      icon: Icons.play_arrow,
-                      label: 'Start',
-                      onPressed: _isEngineReady ? _startGame : null,
-                      color: Colors.green,
-                    ),
-                    _buildControlButton(
-                      icon: Icons.pause,
-                      label: 'Pause',
-                      onPressed: _isEngineReady ? _pauseGame : null,
-                      color: Colors.orange,
-                    ),
-                    _buildControlButton(
-                      icon: Icons.stop,
-                      label: 'Stop',
-                      onPressed: _isEngineReady ? _stopGame : null,
-                      color: Colors.red,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildControlButton(
-                      icon: Icons.message,
-                      label: 'Send Message',
-                      onPressed: _isEngineReady ? _sendTestMessage : null,
-                      color: Colors.blue,
-                    ),
-                    _buildControlButton(
-                      icon: Icons.refresh,
-                      label: 'Reset',
-                      onPressed: _resetScore,
-                      color: Colors.grey,
-                    ),
-                  ],
-                ),
-              ],
+            
+            // Overlay UI - Bottom controls
+            Positioned(
+              bottom: 20,
+              left: 20,
+              right: 20,
+              child: _buildControlPanel(),
             ),
-          ),
-
-          // Event log
-          if (_logs.isNotEmpty)
-            Container(
-              height: 150,
-              color: Colors.black87,
-              child: ListView.builder(
-                reverse: true,
-                itemCount: _logs.length,
-                itemBuilder: (context, index) {
-                  final logIndex = _logs.length - 1 - index;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Text(
-                      _logs[logIndex],
-                      style: const TextStyle(
-                        color: Colors.greenAccent,
-                        fontSize: 12,
-                        fontFamily: 'Courier',
-                      ),
-                    ),
-                  );
-                },
+            
+            // Back button
+            Positioned(
+              top: 40,
+              left: 10,
+              child: SafeArea(
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black.withOpacity(0.6),
+                  ),
+                ),
               ),
             ),
-        ],
+            
+            // Status indicator
+            if (!_isReady)
+              Container(
+                color: Colors.black87,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text(
+                        'Loading Unity...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildControlButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-    required Color color,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(label),
+  Widget _buildInfoCard() {
+    return Card(
+      color: Colors.black.withOpacity(0.85),
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildInfoRow(
+              Icons.speed,
+              'Speed',
+              '${_currentSpeed.toStringAsFixed(0)}°/s (${_currentRpm.toStringAsFixed(1)} RPM)',
+              Colors.amber,
+            ),
+            const Divider(color: Colors.white24, height: 20),
+            _buildInfoRow(
+              Icons.message,
+              'Message',
+              _lastMessage,
+              Colors.blue,
+            ),
+            const Divider(color: Colors.white24, height: 20),
+            _buildInfoRow(
+              _direction.contains('FROM') ? Icons.arrow_back : Icons.arrow_forward,
+              'Direction',
+              _direction,
+              _direction.contains('FROM') ? Colors.green : Colors.orange,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlPanel() {
+    return Card(
+      color: Colors.black.withOpacity(0.9),
+      elevation: 12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Title
+            const Text(
+              '🎮 Cube Controls',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Speed slider
+            _buildSliderControl(
+              'Rotation Speed',
+              _rotationSpeed,
+              -180,
+              180,
+              (value) {
+                setState(() => _rotationSpeed = value);
+                _sendSpeed(value);
+              },
+              Icons.threesixty,
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Axis selector
+            _buildAxisSelector(),
+            
+            const SizedBox(height: 20),
+            
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    'Reset',
+                    Icons.refresh,
+                    Colors.orange,
+                    _reset,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildActionButton(
+                    'Get State',
+                    Icons.analytics,
+                    Colors.blue,
+                    _getState,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildActionButton(
+                    'Random Color',
+                    Icons.palette,
+                    Colors.purple,
+                    _randomColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliderControl(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+    IconData icon,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Colors.blueAccent, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${value.toStringAsFixed(0)}°/s',
+                style: const TextStyle(
+                  color: Colors.blueAccent,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: (max - min).toInt(),
+          onChanged: _isReady ? onChanged : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAxisSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.loop, color: Colors.greenAccent, size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Rotation Axis',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _buildAxisButton('X', Colors.red),
+            const SizedBox(width: 8),
+            _buildAxisButton('Y', Colors.green),
+            const SizedBox(width: 8),
+            _buildAxisButton('Z', Colors.blue),
+            const SizedBox(width: 8),
+            _buildAxisButton('All', Colors.purple),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAxisButton(String axis, Color color) {
+    final isSelected = _rotationAxis == axis;
+    return Expanded(
+      child: Material(
+        color: isSelected ? color : color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _isReady
+              ? () {
+                  setState(() => _rotationAxis = axis);
+                  _setAxis(axis);
+                }
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              axis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isSelected ? Colors.white : color,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onPressed,
+  ) {
+    return ElevatedButton(
+      onPressed: _isReady ? onPressed : null,
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 4,
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -312,133 +532,126 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   void _onEngineCreated(GameEngineController controller) {
     setState(() {
       _controller = controller;
-      _isEngineReady = true;
-      _statusMessage = 'Engine ready!';
     });
-    _addLog(
-        'Engine created: ${controller.engineType.engineName} v${controller.engineVersion}');
-
-    // Listen to engine events
-    controller.eventStream.listen((event) {
-      _addLog('Event: ${event.type.name}');
-      if (event.type == GameEngineEventType.error) {
-        _addLog('Error: ${event.message}');
-      }
-    });
+    _log('Engine created');
   }
 
-  void _onMessage(GameEngineMessage message) {
-    _addLog('Message: ${message.data}');
-
-    // Try to parse as JSON and handle game messages
-    final json = message.asJson();
-    if (json != null && json['type'] == 'onScoreUpdate') {
+  void _onMessage(GameMessage message) {
+    _log('Message received: ${message.method}');
+    
+    if (message.method == 'onReady') {
       setState(() {
-        _score = json['score'] as int? ?? _score;
+        _isReady = true;
+        _lastMessage = 'Unity cube demo ready!';
+        _direction = '← FROM UNITY';
+      });
+    } else if (message.method == 'onSpeedChanged') {
+      try {
+        final data = message.data as Map<String, dynamic>;
+        setState(() {
+          _currentSpeed = (data['speed'] as num).toDouble();
+          _currentRpm = (data['rpm'] as num).toDouble();
+          _lastMessage = 'Speed updated';
+          _direction = '← FROM UNITY';
+        });
+      } catch (e) {
+        _log('Error parsing speed data: $e');
+      }
+    } else if (message.method == 'onReset') {
+      setState(() {
+        _rotationSpeed = 50;
+        _rotationAxis = 'Y';
+        _lastMessage = 'Cube reset';
+        _direction = '← FROM UNITY';
+      });
+    } else if (message.method == 'onState') {
+      setState(() {
+        _lastMessage = 'State received';
+        _direction = '← FROM UNITY';
       });
     }
   }
 
-  void _onSceneLoaded(GameSceneLoaded scene) {
-    _addLog('Scene loaded: ${scene.name} (Index: ${scene.buildIndex})');
+  void _onSceneLoaded(GameSceneInfo sceneInfo) {
+    _log('Scene loaded: ${sceneInfo.name}');
+  }
+
+  void _sendSpeed(double speed) {
+    _controller?.sendMessage('GameFrameworkDemo', 'setSpeed', speed.toString());
     setState(() {
-      _statusMessage = 'Scene: ${scene.name}';
+      _lastMessage = 'Speed set to ${speed.toStringAsFixed(0)}°/s';
+      _direction = '→ TO UNITY';
     });
   }
 
-  void _startGame() async {
-    _addLog('Starting game...');
-    await _controller?.sendMessage('GameManager', 'StartGame', 'level1');
-  }
-
-  void _pauseGame() async {
-    _addLog('Pausing game...');
-    await _controller?.pause();
-  }
-
-  void _stopGame() async {
-    _addLog('Stopping game...');
-    await _controller?.sendMessage('GameManager', 'StopGame', '');
-  }
-
-  void _sendTestMessage() async {
-    _addLog('Sending test message...');
-    await _controller?.sendJsonMessage('GameManager', 'UpdateScore', {
-      'score': 100,
-      'stars': 3,
+  void _setAxis(String axis) {
+    Map<String, dynamic> axisData;
+    switch (axis) {
+      case 'X':
+        axisData = {'x': 1.0, 'y': 0.0, 'z': 0.0};
+        break;
+      case 'Y':
+        axisData = {'x': 0.0, 'y': 1.0, 'z': 0.0};
+        break;
+      case 'Z':
+        axisData = {'x': 0.0, 'y': 0.0, 'z': 1.0};
+        break;
+      case 'All':
+        axisData = {'x': 1.0, 'y': 1.0, 'z': 1.0};
+        break;
+      default:
+        axisData = {'x': 0.0, 'y': 1.0, 'z': 0.0};
+    }
+    
+    _controller?.sendJsonMessage('GameFrameworkDemo', 'setAxis', axisData);
+    setState(() {
+      _lastMessage = 'Axis set to $axis';
+      _direction = '→ TO UNITY';
     });
   }
 
-  void _resetScore() {
+  void _reset() {
+    _controller?.sendMessage('GameFrameworkDemo', 'reset', '');
     setState(() {
-      _score = 0;
+      _rotationSpeed = 50;
+      _rotationAxis = 'Y';
+      _lastMessage = 'Reset requested';
+      _direction = '→ TO UNITY';
     });
-    _addLog('Score reset');
   }
 
-  void _addLog(String message) {
+  void _getState() {
+    _controller?.sendMessage('GameFrameworkDemo', 'getState', '');
     setState(() {
-      _logs.add(
-          '[${DateTime.now().toIso8601String().split('T')[1].substring(0, 8)}] $message');
-      if (_logs.length > 50) {
+      _lastMessage = 'State requested';
+      _direction = '→ TO UNITY';
+    });
+  }
+
+  void _randomColor() {
+    final random = math.Random();
+    final colorData = {
+      'r': random.nextDouble() * 0.5 + 0.3,
+      'g': random.nextDouble() * 0.5 + 0.3,
+      'b': random.nextDouble() * 0.5 + 0.3,
+      'a': 1.0,
+    };
+    
+    _controller?.sendJsonMessage('GameFrameworkDemo', 'setColor', colorData);
+    setState(() {
+      _lastMessage = 'Color changed';
+      _direction = '→ TO UNITY';
+    });
+  }
+
+  void _log(String message) {
+    setState(() {
+      _logs.add('[${DateTime.now().toIso8601String()}] $message');
+      if (_logs.length > 100) {
         _logs.removeAt(0);
       }
     });
-  }
-
-  void _showInfoDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Unity Integration'),
-        content: const SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Setup Instructions:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                  '1. Export your Unity project using Flutter > Export for Flutter'),
-              SizedBox(height: 4),
-              Text('2. Copy the exported files to your Flutter project'),
-              SizedBox(height: 4),
-              Text('3. Add gameframework_unity dependency'),
-              SizedBox(height: 4),
-              Text('4. Uncomment the GameWidget in this example'),
-              SizedBox(height: 16),
-              Text(
-                'Features:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text('• Bidirectional communication'),
-              SizedBox(height: 4),
-              Text('• Lifecycle management'),
-              SizedBox(height: 4),
-              Text('• Scene load events'),
-              SizedBox(height: 4),
-              Text('• JSON message support'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
+    print(message);
   }
 }
 

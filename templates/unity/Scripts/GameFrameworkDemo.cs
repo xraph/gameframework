@@ -1,57 +1,63 @@
 using System;
 using UnityEngine;
-using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using TMPro;
 using Xraph.GameFramework.Unity;
 
 namespace GameFrameworkTemplate
 {
     /// <summary>
-    /// Main demo orchestrator for Game Framework features.
+    /// Interactive rotating cube demo for Game Framework.
     /// 
-    /// This script demonstrates all the features available in the
-    /// Flutter Game Framework Unity integration:
-    /// - Automatic message routing via FlutterMonoBehaviour
-    /// - Typed message handling with [FlutterMethod] attribute
-    /// - Binary data transfer
-    /// - High-frequency messaging with batching and throttling
-    /// - State synchronization with delta compression
-    /// - Scene management
-    /// - Performance monitoring
+    /// Features:
+    /// - Rotating cube with controllable speed and direction
+    /// - Real-time UI showing speed, messages, and communication direction
+    /// - Bidirectional Flutter-Unity communication
+    /// - Smooth animations and visual feedback
     /// 
     /// Attach this script to a GameObject named "GameFrameworkDemo" in your scene.
+    /// The script will automatically create the cube and UI elements.
     /// </summary>
     public class GameFrameworkDemo : FlutterMonoBehaviour
     {
         #region Configuration
 
-        [Header("Demo Configuration")]
+        [Header("Cube Configuration")]
+        [Tooltip("Initial rotation speed")]
+        [SerializeField] private float initialSpeed = 50f;
+
+        [Tooltip("Cube color")]
+        [SerializeField] private Color cubeColor = new Color(0.3f, 0.6f, 1f);
+
+        [Header("UI Configuration")]
         [Tooltip("Enable verbose logging")]
         [SerializeField] private bool verboseLogging = true;
-
-        [Tooltip("Auto-start demo features on scene load")]
-        [SerializeField] private bool autoStart = true;
 
         #endregion
 
         #region FlutterMonoBehaviour Overrides
 
-        /// <summary>
-        /// Target name for message routing.
-        /// Flutter will send messages to "GameFrameworkDemo" target.
-        /// </summary>
         protected override string TargetName => "GameFrameworkDemo";
-
-        /// <summary>
-        /// Run in singleton mode - only one instance handles messages.
-        /// </summary>
         protected override bool IsSingleton => true;
 
         #endregion
 
-        #region State
+        #region Private Fields
 
-        private bool _isInitialized = false;
-        private DemoStats _stats;
+        private GameObject _cube;
+        private GameObject _uiCanvas;
+        private TextMeshProUGUI _speedText;
+        private TextMeshProUGUI _messageText;
+        private TextMeshProUGUI _directionText;
+        
+        private float _rotationSpeed = 50f;
+        private Vector3 _rotationAxis = Vector3.up;
+        private string _lastMessage = "Waiting for messages...";
+        private string _lastDirection = "---";
+        private int _messageCount = 0;
+        
+        private Color _fromFlutterColor = new Color(0.2f, 0.8f, 0.4f); // Green
+        private Color _toFlutterColor = new Color(0.9f, 0.4f, 0.2f);   // Orange
 
         #endregion
 
@@ -60,31 +66,29 @@ namespace GameFrameworkTemplate
         protected override void Awake()
         {
             base.Awake();
-
-            // Initialize stats
-            _stats = new DemoStats();
-
             EnableDebugLogging = verboseLogging;
-            EnableBatching = true;
-            EnableDeltaCompression = true;
-
+            _rotationSpeed = initialSpeed;
+            
             Log("GameFrameworkDemo: Initialized");
         }
 
         void Start()
         {
-            if (autoStart)
-            {
-                Initialize();
-            }
+            CreateCube();
+            CreateUI();
+            NotifyFlutterReady();
         }
 
         void Update()
         {
-            // Update runtime stats
-            _stats.frameCount++;
-            _stats.deltaTime = Time.deltaTime;
-            _stats.fps = 1f / Time.deltaTime;
+            // Rotate the cube
+            if (_cube != null)
+            {
+                _cube.transform.Rotate(_rotationAxis, _rotationSpeed * Time.deltaTime);
+            }
+            
+            // Update UI
+            UpdateUI();
         }
 
         protected override void OnDestroy()
@@ -95,484 +99,376 @@ namespace GameFrameworkTemplate
 
         #endregion
 
-        #region Initialization
+        #region Scene Setup
 
-        /// <summary>
-        /// Initialize the demo and notify Flutter.
-        /// </summary>
-        [FlutterMethod("initialize")]
-        public void Initialize()
+        private void CreateCube()
         {
-            if (_isInitialized)
+            // Create cube
+            _cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _cube.name = "RotatingCube";
+            _cube.transform.position = Vector3.zero;
+            _cube.transform.localScale = Vector3.one * 2f;
+            
+            // Add material
+            var renderer = _cube.GetComponent<Renderer>();
+            if (renderer != null)
             {
-                Log("GameFrameworkDemo: Already initialized");
-                return;
+                renderer.material = new Material(Shader.Find("Standard"));
+                renderer.material.color = cubeColor;
+                renderer.material.SetFloat("_Metallic", 0.5f);
+                renderer.material.SetFloat("_Glossiness", 0.8f);
             }
-
-            _isInitialized = true;
-            _stats.startTime = Time.time;
-
-            // Notify Flutter that demo is ready
-            SendToFlutter("onInitialized", new InitializedEvent
+            
+            // Position camera
+            var camera = Camera.main;
+            if (camera != null)
             {
-                success = true,
-                version = "1.0.0",
-                features = new[] { "messaging", "binary", "batching", "throttling", "delta", "scenes" },
-                timestamp = DateTime.UtcNow.ToString("o")
-            });
-
-            Log("GameFrameworkDemo: Initialized and ready");
+                camera.transform.position = new Vector3(0, 2, -6);
+                camera.transform.LookAt(_cube.transform);
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = new Color(0.1f, 0.1f, 0.15f);
+            }
+            
+            // Add light
+            var light = new GameObject("DirectionalLight");
+            var lightComp = light.AddComponent<Light>();
+            lightComp.type = LightType.Directional;
+            lightComp.intensity = 1.2f;
+            light.transform.rotation = Quaternion.Euler(50, -30, 0);
+            
+            Log("Cube created successfully");
         }
 
-        /// <summary>
-        /// Shutdown the demo.
-        /// </summary>
-        [FlutterMethod("shutdown")]
-        public void Shutdown()
+        private void CreateUI()
         {
-            _isInitialized = false;
+            // Create canvas
+            _uiCanvas = new GameObject("DemoCanvas");
+            var canvas = _uiCanvas.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 100;
+            
+            var canvasScaler = _uiCanvas.AddComponent<CanvasScaler>();
+            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvasScaler.referenceResolution = new Vector2(1920, 1080);
+            
+            _uiCanvas.AddComponent<GraphicRaycaster>();
+            
+            // Create UI panel (top center)
+            var panel = new GameObject("InfoPanel");
+            panel.transform.SetParent(_uiCanvas.transform, false);
+            
+            var panelRect = panel.AddComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.5f, 1f);
+            panelRect.anchorMax = new Vector2(0.5f, 1f);
+            panelRect.pivot = new Vector2(0.5f, 1f);
+            panelRect.anchoredPosition = new Vector2(0, -20);
+            panelRect.sizeDelta = new Vector2(600, 200);
+            
+            var panelImage = panel.AddComponent<Image>();
+            panelImage.color = new Color(0, 0, 0, 0.85f);
+            
+            // Create text fields
+            _speedText = CreateTextField(panel.transform, new Vector2(0, -30), "Speed: 0 rpm");
+            _messageText = CreateTextField(panel.transform, new Vector2(0, -80), "Message: Waiting...");
+            _directionText = CreateTextField(panel.transform, new Vector2(0, -130), "Direction: ---");
+            
+            // Style text fields
+            _speedText.fontSize = 28;
+            _speedText.fontStyle = FontStyles.Bold;
+            _speedText.color = new Color(1f, 1f, 0.3f);
+            
+            _messageText.fontSize = 24;
+            _messageText.color = new Color(0.9f, 0.9f, 0.9f);
+            
+            _directionText.fontSize = 26;
+            _directionText.fontStyle = FontStyles.Bold;
+            
+            Log("UI created successfully");
+        }
 
-            SendToFlutter("onShutdown", new { success = true });
+        private TextMeshProUGUI CreateTextField(Transform parent, Vector2 position, string text)
+        {
+            var textObj = new GameObject("TextField");
+            textObj.transform.SetParent(parent, false);
+            
+            var rect = textObj.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = new Vector2(550, 40);
+            
+            var tmp = textObj.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 24;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = Color.white;
+            
+            // Add shadow for better visibility
+            var shadow = textObj.AddComponent<UnityEngine.UI.Shadow>();
+            shadow.effectColor = new Color(0, 0, 0, 0.8f);
+            shadow.effectDistance = new Vector2(2, -2);
+            
+            return tmp;
+        }
 
-            Log("GameFrameworkDemo: Shutdown");
+        private void UpdateUI()
+        {
+            if (_speedText != null)
+            {
+                float rpm = (_rotationSpeed / 360f) * 60f;
+                _speedText.text = $"Speed: {rpm:F1} RPM ({_rotationSpeed:F0}°/s)";
+            }
+            
+            if (_messageText != null)
+            {
+                _messageText.text = $"Message: {_lastMessage}";
+            }
+            
+            if (_directionText != null)
+            {
+                _directionText.text = $"Direction: {_lastDirection}";
+            }
         }
 
         #endregion
 
-        #region Basic Messaging
+        #region Flutter Message Handlers
 
         /// <summary>
-        /// Echo a string message back to Flutter.
-        /// Demonstrates basic string messaging.
+        /// Set the rotation speed of the cube.
         /// </summary>
-        [FlutterMethod("echo")]
-        public void Echo(string message)
+        [FlutterMethod("setSpeed")]
+        private void SetSpeed(string data)
         {
-            _stats.messagesReceived++;
-
-            Log($"GameFrameworkDemo: Echo received: {message}");
-
-            SendToFlutter("onEcho", message);
-        }
-
-        /// <summary>
-        /// Process a typed command from Flutter.
-        /// Demonstrates automatic JSON deserialization.
-        /// </summary>
-        [FlutterMethod("command")]
-        public void ProcessCommand(CommandMessage command)
-        {
-            _stats.messagesReceived++;
-
-            Log($"GameFrameworkDemo: Command received: {command.action}, params: {command.parameters?.Length ?? 0}");
-
-            // Process command
-            var result = new CommandResult
-            {
-                action = command.action,
-                success = true,
-                timestamp = DateTime.UtcNow.ToString("o")
-            };
-
-            switch (command.action)
-            {
-                case "ping":
-                    result.data = "pong";
-                    break;
-                case "getStats":
-                    result.data = JsonUtility.ToJson(_stats);
-                    break;
-                case "getScenes":
-                    result.data = GetSceneList();
-                    break;
-                default:
-                    result.data = $"Processed: {command.action}";
-                    break;
-            }
-
-            SendToFlutter("onCommandResult", result);
-        }
-
-        /// <summary>
-        /// No-parameter method demonstrating simple notification.
-        /// </summary>
-        [FlutterMethod("ping")]
-        public void Ping()
-        {
-            _stats.messagesReceived++;
-            SendToFlutter("onPong", "pong");
-        }
-
-        #endregion
-
-        #region Binary Data
-
-        /// <summary>
-        /// Receive binary data from Flutter.
-        /// Demonstrates binary data transfer with automatic base64 decoding.
-        /// </summary>
-        [FlutterMethod("receiveBinary", AcceptsBinary = true)]
-        public void ReceiveBinary(byte[] data)
-        {
-            _stats.messagesReceived++;
-            _stats.bytesReceived += data?.Length ?? 0;
-
-            Log($"GameFrameworkDemo: Received binary data: {data?.Length ?? 0} bytes");
-
-            // Acknowledge receipt
-            SendToFlutter("onBinaryReceived", new BinaryReceivedEvent
-            {
-                size = data?.Length ?? 0,
-                checksum = ComputeChecksum(data),
-                timestamp = DateTime.UtcNow.ToString("o")
-            });
-        }
-
-        /// <summary>
-        /// Send binary data to Flutter.
-        /// </summary>
-        [FlutterMethod("requestBinary")]
-        public void RequestBinary(BinaryRequest request)
-        {
-            _stats.messagesReceived++;
-
-            Log($"GameFrameworkDemo: Binary request: {request.size} bytes");
-
-            // Generate test binary data
-            byte[] data = new byte[request.size];
-            for (int i = 0; i < data.Length; i++)
-            {
-                data[i] = (byte)(i % 256);
-            }
-
-            // Send binary data (with optional compression)
-            SendBinaryToFlutter("onBinaryData", data, request.compress);
-
-            _stats.bytesSent += data.Length;
-        }
-
-        private long ComputeChecksum(byte[] data)
-        {
-            if (data == null || data.Length == 0) return 0;
-            long sum = 0;
-            for (int i = 0; i < data.Length; i++)
-            {
-                sum = (sum + data[i]) * 31;
-            }
-            return sum;
-        }
-
-        #endregion
-
-        #region High-Frequency Messaging
-
-        /// <summary>
-        /// Handle high-frequency position updates from Flutter.
-        /// Demonstrates throttled message handling.
-        /// </summary>
-        [FlutterMethod("position", Throttle = 60, ThrottleStrategy = ThrottleStrategy.KeepLatest)]
-        public void OnPositionUpdate(PositionData position)
-        {
-            _stats.messagesReceived++;
-            _stats.positionUpdates++;
-
-            // Process position update (e.g., move a game object)
-            // In a real game, this would update player position
-        }
-
-        /// <summary>
-        /// Handle high-frequency input from Flutter.
-        /// </summary>
-        [FlutterMethod("input", Throttle = 120)]
-        public void OnInputUpdate(InputData input)
-        {
-            _stats.messagesReceived++;
-            _stats.inputUpdates++;
-
-            // Process input (e.g., joystick, touch)
-        }
-
-        /// <summary>
-        /// Start sending high-frequency updates to Flutter.
-        /// </summary>
-        [FlutterMethod("startStreaming")]
-        public void StartStreaming(StreamingConfig config)
-        {
-            Log($"GameFrameworkDemo: Start streaming at {config.rateHz}Hz");
-
-            // In a real implementation, start a coroutine or update loop
-            // to send position/state updates at the configured rate
-            SendToFlutter("onStreamingStarted", new { rateHz = config.rateHz });
-        }
-
-        /// <summary>
-        /// Stop streaming updates.
-        /// </summary>
-        [FlutterMethod("stopStreaming")]
-        public void StopStreaming()
-        {
-            Log("GameFrameworkDemo: Stop streaming");
-            SendToFlutter("onStreamingStopped", new { });
-        }
-
-        #endregion
-
-        #region State Synchronization
-
-        /// <summary>
-        /// Get current game state.
-        /// Demonstrates state serialization.
-        /// </summary>
-        [FlutterMethod("getState")]
-        public void GetState()
-        {
-            _stats.messagesReceived++;
-
-            var state = new GameState
-            {
-                isInitialized = _isInitialized,
-                currentScene = SceneManager.GetActiveScene().name,
-                frameCount = _stats.frameCount,
-                fps = _stats.fps,
-                messagesReceived = _stats.messagesReceived,
-                bytesSent = _stats.bytesSent,
-                bytesReceived = _stats.bytesReceived,
-                uptime = Time.time - _stats.startTime
-            };
-
-            SendToFlutter("onState", state);
-        }
-
-        /// <summary>
-        /// Set game state from Flutter.
-        /// </summary>
-        [FlutterMethod("setState")]
-        public void SetState(GameState state)
-        {
-            _stats.messagesReceived++;
-
-            Log($"GameFrameworkDemo: Set state - scene: {state.currentScene}");
-
-            // Apply state changes
-            if (!string.IsNullOrEmpty(state.currentScene) && 
-                state.currentScene != SceneManager.GetActiveScene().name)
-            {
-                LoadScene(state.currentScene);
-            }
-
-            SendToFlutter("onStateApplied", new { success = true });
-        }
-
-        #endregion
-
-        #region Scene Management
-
-        /// <summary>
-        /// Load a scene by name.
-        /// </summary>
-        [FlutterMethod("loadScene")]
-        public void LoadScene(string sceneName)
-        {
-            _stats.messagesReceived++;
-
-            Log($"GameFrameworkDemo: Loading scene: {sceneName}");
-
             try
             {
-                SceneManager.LoadScene(sceneName);
+                float speed = float.Parse(data);
+                _rotationSpeed = Mathf.Clamp(speed, -360f, 360f);
+                _lastMessage = $"Speed changed to {_rotationSpeed:F0}°/s";
+                _lastDirection = "← FROM FLUTTER";
+                _messageCount++;
                 
-                // Notification will be sent by FlutterSceneManager
-                SendToFlutter("onSceneLoading", new { scene = sceneName });
+                if (_directionText != null)
+                {
+                    _directionText.color = _fromFlutterColor;
+                }
+                
+                // Send acknowledgment
+                SendToFlutter("onSpeedChanged", new SpeedData
+                {
+                    speed = _rotationSpeed,
+                    rpm = (_rotationSpeed / 360f) * 60f
+                });
+                
+                Log($"Speed set to: {_rotationSpeed}");
             }
             catch (Exception e)
             {
-                SendToFlutter("onSceneError", new { scene = sceneName, error = e.Message });
+                LogError($"Failed to parse speed: {e.Message}");
             }
         }
-
-        private string GetSceneList()
-        {
-            var scenes = new string[SceneManager.sceneCountInBuildSettings];
-            for (int i = 0; i < scenes.Length; i++)
-            {
-                string path = SceneUtility.GetScenePathByBuildIndex(i);
-                scenes[i] = System.IO.Path.GetFileNameWithoutExtension(path);
-            }
-            return string.Join(",", scenes);
-        }
-
-        #endregion
-
-        #region Performance
 
         /// <summary>
-        /// Get performance statistics.
+        /// Set the rotation axis.
         /// </summary>
-        [FlutterMethod("getPerformance")]
-        public void GetPerformance()
+        [FlutterMethod("setAxis")]
+        private void SetAxis(string data)
         {
-            _stats.messagesReceived++;
-
-            var perf = new PerformanceStats
+            var axisData = FlutterSerialization.Deserialize<AxisData>(data);
+            if (axisData != null)
             {
-                fps = _stats.fps,
-                frameCount = _stats.frameCount,
-                deltaTime = _stats.deltaTime,
-                messagesReceived = _stats.messagesReceived,
-                messagesSent = _stats.messagesSent,
-                bytesReceived = _stats.bytesReceived,
-                bytesSent = _stats.bytesSent,
-                positionUpdates = _stats.positionUpdates,
-                inputUpdates = _stats.inputUpdates,
-                uptime = Time.time - _stats.startTime,
-                memoryUsage = GC.GetTotalMemory(false),
-                poolStats = MessagePool.Instance?.GetStatistics().ToString() ?? "",
-                batcherStats = MessageBatcher.Instance?.GetStatistics().ToString() ?? ""
+                _rotationAxis = new Vector3(axisData.x, axisData.y, axisData.z).normalized;
+                _lastMessage = $"Axis: ({axisData.x:F1}, {axisData.y:F1}, {axisData.z:F1})";
+                _lastDirection = "← FROM FLUTTER";
+                _messageCount++;
+                
+                if (_directionText != null)
+                {
+                    _directionText.color = _fromFlutterColor;
+                }
+                
+                Log($"Rotation axis set to: {_rotationAxis}");
+            }
+        }
+
+        /// <summary>
+        /// Set the cube color.
+        /// </summary>
+        [FlutterMethod("setColor")]
+        private void SetColor(string data)
+        {
+            var colorData = FlutterSerialization.Deserialize<ColorData>(data);
+            if (colorData != null && _cube != null)
+            {
+                var renderer = _cube.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    Color newColor = new Color(colorData.r, colorData.g, colorData.b, colorData.a);
+                    renderer.material.color = newColor;
+                    _lastMessage = $"Color changed";
+                    _lastDirection = "← FROM FLUTTER";
+                    _messageCount++;
+                    
+                    if (_directionText != null)
+                    {
+                        _directionText.color = _fromFlutterColor;
+                    }
+                    
+                    Log($"Cube color set to: {newColor}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reset the cube to default state.
+        /// </summary>
+        [FlutterMethod("reset")]
+        private void Reset(string data)
+        {
+            _rotationSpeed = initialSpeed;
+            _rotationAxis = Vector3.up;
+            
+            if (_cube != null)
+            {
+                _cube.transform.rotation = Quaternion.identity;
+                var renderer = _cube.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.material.color = cubeColor;
+                }
+            }
+            
+            _lastMessage = "Reset to defaults";
+            _lastDirection = "← FROM FLUTTER";
+            _messageCount++;
+            
+            if (_directionText != null)
+            {
+                _directionText.color = _fromFlutterColor;
+            }
+            
+            // Notify Flutter
+            SendToFlutter("onReset", new { success = true });
+            
+            Log("Demo reset");
+        }
+
+        /// <summary>
+        /// Get current cube state.
+        /// </summary>
+        [FlutterMethod("getState")]
+        private void GetState(string data)
+        {
+            var state = new CubeState
+            {
+                speed = _rotationSpeed,
+                rpm = (_rotationSpeed / 360f) * 60f,
+                axis = new AxisData { x = _rotationAxis.x, y = _rotationAxis.y, z = _rotationAxis.z },
+                rotation = new Vector3Data
+                {
+                    x = _cube.transform.eulerAngles.x,
+                    y = _cube.transform.eulerAngles.y,
+                    z = _cube.transform.eulerAngles.z
+                },
+                messageCount = _messageCount
             };
-
-            SendToFlutter("onPerformance", perf);
-        }
-
-        /// <summary>
-        /// Reset performance counters.
-        /// </summary>
-        [FlutterMethod("resetPerformance")]
-        public void ResetPerformance()
-        {
-            _stats = new DemoStats();
-            _stats.startTime = Time.time;
-
-            MessagePool.Instance?.ResetStatistics();
-            MessageBatcher.Instance?.ResetStatistics();
-
-            SendToFlutter("onPerformanceReset", new { success = true });
+            
+            SendToFlutter("onState", state);
+            
+            _lastMessage = "State sent";
+            _lastDirection = "→ TO FLUTTER";
+            
+            if (_directionText != null)
+            {
+                _directionText.color = _toFlutterColor;
+            }
+            
+            Log("State sent to Flutter");
         }
 
         #endregion
 
-        #region Utility
+        #region Helper Methods
+
+        private void NotifyFlutterReady()
+        {
+            SendToFlutter("onReady", new
+            {
+                success = true,
+                initialSpeed = _rotationSpeed,
+                initialAxis = new { x = _rotationAxis.x, y = _rotationAxis.y, z = _rotationAxis.z },
+                message = "Unity cube demo ready!"
+            });
+            
+            _lastMessage = "Demo initialized";
+            _lastDirection = "→ TO FLUTTER";
+            
+            if (_directionText != null)
+            {
+                _directionText.color = _toFlutterColor;
+            }
+            
+            Log("Ready notification sent to Flutter");
+        }
 
         private void Log(string message)
         {
             if (verboseLogging)
             {
-                Debug.Log(message);
+                Debug.Log($"[GameFrameworkDemo] {message}");
             }
+        }
+
+        private void LogError(string message)
+        {
+            Debug.LogError($"[GameFrameworkDemo] {message}");
         }
 
         #endregion
 
-        #region Data Types
+        #region Data Classes
 
         [Serializable]
-        private class DemoStats
+        public class SpeedData
         {
-            public float startTime;
-            public int frameCount;
-            public float deltaTime;
-            public float fps;
-            public int messagesReceived;
-            public int messagesSent;
-            public long bytesReceived;
-            public long bytesSent;
-            public int positionUpdates;
-            public int inputUpdates;
+            public float speed;
+            public float rpm;
         }
 
         [Serializable]
-        public class InitializedEvent
-        {
-            public bool success;
-            public string version;
-            public string[] features;
-            public string timestamp;
-        }
-
-        [Serializable]
-        public class CommandMessage
-        {
-            public string action;
-            public string[] parameters;
-        }
-
-        [Serializable]
-        public class CommandResult
-        {
-            public string action;
-            public bool success;
-            public string data;
-            public string timestamp;
-        }
-
-        [Serializable]
-        public class BinaryRequest
-        {
-            public int size;
-            public bool compress;
-        }
-
-        [Serializable]
-        public class BinaryReceivedEvent
-        {
-            public int size;
-            public long checksum;
-            public string timestamp;
-        }
-
-        [Serializable]
-        public class PositionData
+        public class AxisData
         {
             public float x;
             public float y;
             public float z;
-            public float timestamp;
         }
 
         [Serializable]
-        public class InputData
+        public class ColorData
         {
-            public float dx;
-            public float dy;
-            public float pressure;
-            public int pointerId;
+            public float r;
+            public float g;
+            public float b;
+            public float a = 1f;
         }
 
         [Serializable]
-        public class StreamingConfig
+        public class Vector3Data
         {
-            public int rateHz;
-            public bool enableDelta;
+            public float x;
+            public float y;
+            public float z;
         }
 
         [Serializable]
-        public class GameState
+        public class CubeState
         {
-            public bool isInitialized;
-            public string currentScene;
-            public int frameCount;
-            public float fps;
-            public int messagesReceived;
-            public long bytesSent;
-            public long bytesReceived;
-            public float uptime;
-        }
-
-        [Serializable]
-        public class PerformanceStats
-        {
-            public float fps;
-            public int frameCount;
-            public float deltaTime;
-            public int messagesReceived;
-            public int messagesSent;
-            public long bytesReceived;
-            public long bytesSent;
-            public int positionUpdates;
-            public int inputUpdates;
-            public float uptime;
-            public long memoryUsage;
-            public string poolStats;
-            public string batcherStats;
+            public float speed;
+            public float rpm;
+            public AxisData axis;
+            public Vector3Data rotation;
+            public int messageCount;
         }
 
         #endregion

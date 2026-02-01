@@ -36,13 +36,54 @@ controller.messageStream.listen((msg) {
 ```
 
 ### GameFrameworkDemo.cs
-Comprehensive demo orchestrator testing all framework features.
+**🎮 Interactive Rotating Cube Demo** - The star of the show!
+
+An engaging 3D rotating cube that can be controlled from Flutter with a beautiful overlay UI.
 
 **Features:**
-- Complete feature demonstration
-- Performance monitoring
-- Binary data handling
-- Scene management integration
+- **3D rotating cube** with customizable speed and axis
+- **Real-time Unity UI** showing:
+  - Current rotation speed (°/s and RPM)
+  - Last message received
+  - Communication direction (← FROM FLUTTER / → TO FLUTTER)
+- **Color-coded direction** (green for incoming, orange for outgoing)
+- **Flutter overlay controls** for speed, axis, color, and state
+
+**Unity Methods:**
+- `setSpeed(float)` - Set rotation speed
+- `setAxis(x, y, z)` - Set rotation axis
+- `setColor(r, g, b, a)` - Set cube color
+- `reset()` - Reset to defaults
+- `getState()` - Get current state
+
+**Flutter Usage:**
+```dart
+// Control rotation speed
+controller.sendMessage('GameFrameworkDemo', 'setSpeed', '90');
+
+// Change axis to Z
+controller.sendJsonMessage('GameFrameworkDemo', 'setAxis', {
+  'x': 0.0, 'y': 0.0, 'z': 1.0
+});
+
+// Random color
+controller.sendJsonMessage('GameFrameworkDemo', 'setColor', {
+  'r': 0.8, 'g': 0.3, 'b': 0.5, 'a': 1.0
+});
+
+// Listen for Unity responses
+controller.messageStream.listen((msg) {
+  if (msg.method == 'onSpeedChanged') {
+    print('Speed: ${msg.data['speed']}°/s');
+  }
+});
+```
+
+**The Flutter scaffold includes a beautiful overlay UI with:**
+- Rotation speed slider (-180° to 180°/s)
+- Axis selector buttons (X, Y, Z, All)
+- Action buttons (Reset, Get State, Random Color)
+- Live info card showing speed, messages, and direction
 
 ### MessagingExample.cs
 Demonstrates various messaging patterns.
