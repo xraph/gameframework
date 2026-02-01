@@ -1,7 +1,7 @@
 # Flutter Game Framework - Makefile
 # Cross-platform build automation
 
-.PHONY: help setup test test-watch analyze format format-check clean doctor coverage lint prebuild example build-android build-ios install-cli uninstall-cli
+.PHONY: help setup test test-watch analyze format format-check clean doctor coverage lint prebuild example build-android build-ios
 
 # Default target
 .DEFAULT_GOAL := help
@@ -29,29 +29,6 @@ setup: ## Initial project setup (install all dependencies)
 	@cd engines/unity/dart && flutter pub get
 	@cd engines/unreal/dart && flutter pub get
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
-
-install-cli: ## Install game CLI globally for local development
-	@echo "$(BLUE)Installing Game CLI...$(NC)"
-	@cd cli && dart pub get
-	@mkdir -p $$HOME/.local/bin
-	@cd cli && dart compile exe bin/game.dart -o $$HOME/.local/bin/game
-	@echo ""
-	@echo "$(GREEN)✓ Game CLI installed successfully!$(NC)"
-	@echo "$(YELLOW)⚠ Make sure your PATH includes: $$HOME/.local/bin$(NC)"
-	@echo ""
-	@if echo "$$PATH" | grep -q "$$HOME/.local/bin"; then \
-		echo "$(GREEN)✓ PATH is already configured$(NC)"; \
-	else \
-		echo "$(YELLOW)Add to your ~/.zshrc or ~/.bashrc:$(NC)"; \
-		echo "  export PATH=\"\$$HOME/.local/bin:\$$PATH\""; \
-	fi
-	@echo ""
-	@echo "Try: game --help"
-
-uninstall-cli: ## Uninstall game CLI
-	@echo "$(BLUE)Uninstalling Game CLI...$(NC)"
-	@rm -f $$HOME/.local/bin/game
-	@echo "$(GREEN)✓ Game CLI uninstalled$(NC)"
 
 ##@ Development
 
@@ -152,43 +129,22 @@ build-ios: ## Build example for iOS (macOS only)
 		exit 1; \
 	fi
 
-##@ CLI Development
-
-cli-rebuild: ## Rebuild and reinstall CLI after changes
-	@echo "$(BLUE)Rebuilding CLI...$(NC)"
-	@cd cli && dart compile exe bin/game.dart -o $$HOME/.local/bin/game
-	@echo "$(GREEN)✓ CLI rebuilt successfully!$(NC)"
-
-cli-test: ## Run CLI tests
-	@echo "$(BLUE)Running CLI tests...$(NC)"
-	@cd cli && dart test
-	@echo "$(GREEN)✓ CLI tests passed!$(NC)"
-
-cli-analyze: ## Analyze CLI code
-	@echo "$(BLUE)Analyzing CLI code...$(NC)"
-	@cd cli && dart analyze
-	@echo "$(GREEN)✓ CLI analysis passed!$(NC)"
-
-cli-format: ## Format CLI code
-	@echo "$(BLUE)Formatting CLI code...$(NC)"
-	@cd cli && dart format .
-	@echo "$(GREEN)✓ CLI code formatted!$(NC)"
-
 ##@ Release
 
 version: ## Show current version
 	@echo "Flutter Game Framework"
 	@echo "Version: $$(grep '^version:' pubspec.yaml | awk '{print $$2}')"
-	@echo "CLI Version: $$(grep '^version:' cli/pubspec.yaml | awk '{print $$2}')"
 
 publish-check: ## Check if package is ready to publish
 	@echo "$(BLUE)Checking package...$(NC)"
 	@dart pub publish --dry-run
 	@echo ""
-	@echo "$(BLUE)Checking CLI package...$(NC)"
-	@cd cli && dart pub publish --dry-run
-	@echo ""
 	@echo "$(GREEN)✓ Publish check complete$(NC)"
+
+publish: ## Publish package to pub.dev
+	@echo "$(BLUE)Publishing package...$(NC)"
+	@dart pub publish
+	@echo "$(GREEN)✓ Package published!$(NC)"
 
 ##@ All-in-one Commands
 
