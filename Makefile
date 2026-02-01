@@ -1,7 +1,7 @@
 # Flutter Game Framework - Makefile
 # Monorepo build automation for Dart workspace
 
-.PHONY: help setup bootstrap test test-package test-watch analyze format format-check clean clean-deep doctor list-packages coverage lint prebuild example build-android build-ios version publish-check publish-gameframework publish-unity publish-unreal publish-all gameframework unity unreal all check ci
+.PHONY: help setup bootstrap test test-package test-watch analyze format format-check clean clean-deep doctor list-packages coverage lint prebuild example build-android build-ios version version-check version-bump publish-check publish-dry-run publish-gameframework publish-unity publish-unreal publish-all release-prepare release-tag gameframework unity unreal all check ci
 
 # Default target
 .DEFAULT_GOAL := help
@@ -221,6 +221,120 @@ publish-unreal: ## Publish gameframework_unreal package to pub.dev
 publish-all: publish-gameframework publish-unity publish-unreal ## Publish all packages to pub.dev (in order)
 	@echo ""
 	@echo "$(GREEN)✓ All packages published!$(NC)"
+
+version-check: ## Check version consistency across all packages
+	@echo "$(BLUE)Checking version consistency...$(NC)"
+	@echo ""
+	@GAMEFRAMEWORK_VERSION=$$(grep '^version:' packages/gameframework/pubspec.yaml | awk '{print $$2}'); \
+	UNITY_VERSION=$$(grep '^version:' engines/unity/dart/pubspec.yaml | awk '{print $$2}'); \
+	UNREAL_VERSION=$$(grep '^version:' engines/unreal/dart/pubspec.yaml | awk '{print $$2}'); \
+	UNITY_GAMEFRAMEWORK_DEP=$$(grep '^  gameframework:' engines/unity/dart/pubspec.yaml | grep -v '#' | awk '{print $$2}'); \
+	UNREAL_GAMEFRAMEWORK_DEP=$$(grep '^  gameframework:' engines/unreal/dart/pubspec.yaml | grep -v '#' | awk '{print $$2}'); \
+	echo "$(GREEN)Package Versions:$(NC)"; \
+	echo "  gameframework:        $$GAMEFRAMEWORK_VERSION"; \
+	echo "  gameframework_unity:  $$UNITY_VERSION"; \
+	echo "  gameframework_unreal: $$UNREAL_VERSION"; \
+	echo ""; \
+	echo "$(GREEN)Dependencies:$(NC)"; \
+	echo "  unity depends on gameframework:  $$UNITY_GAMEFRAMEWORK_DEP"; \
+	echo "  unreal depends on gameframework: $$UNREAL_GAMEFRAMEWORK_DEP"; \
+	echo ""; \
+	if [ "$$UNITY_GAMEFRAMEWORK_DEP" != "$$GAMEFRAMEWORK_VERSION" ]; then \
+		echo "$(YELLOW)⚠️  Warning: gameframework_unity depends on gameframework $$UNITY_GAMEFRAMEWORK_DEP, but gameframework is at version $$GAMEFRAMEWORK_VERSION$(NC)"; \
+		exit 1; \
+	fi; \
+	if [ "$$UNREAL_GAMEFRAMEWORK_DEP" != "$$GAMEFRAMEWORK_VERSION" ]; then \
+		echo "$(YELLOW)⚠️  Warning: gameframework_unreal depends on gameframework $$UNREAL_GAMEFRAMEWORK_DEP, but gameframework is at version $$GAMEFRAMEWORK_VERSION$(NC)"; \
+		exit 1; \
+	fi; \
+	echo "$(GREEN)✓ All versions are consistent!$(NC)"
+
+version-bump: ## Bump version across all packages (usage: make version-bump VERSION=0.0.2)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "$(RED)Error: VERSION variable not set. Usage: make version-bump VERSION=0.0.2$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Bumping version to $(VERSION)...$(NC)"
+	@# Update gameframework version
+	@sed -i.bak 's/^version: .*/version: $(VERSION)/' packages/gameframework/pubspec.yaml && rm packages/gameframework/pubspec.yaml.bak
+	@echo "$(GREEN)✓ Updated packages/gameframework$(NC)"
+	@# Update unity version and dependency
+	@sed -i.bak 's/^version: .*/version: $(VERSION)/' engines/unity/dart/pubspec.yaml && rm engines/unity/dart/pubspec.yaml.bak
+	@sed -i.bak 's/^  gameframework: .*/  gameframework: $(VERSION)/' engines/unity/dart/pubspec.yaml && rm engines/unity/dart/pubspec.yaml.bak
+	@echo "$(GREEN)✓ Updated engines/unity/dart$(NC)"
+	@# Update unreal version and dependency
+	@sed -i.bak 's/^version: .*/version: $(VERSION)/' engines/unreal/dart/pubspec.yaml && rm engines/unreal/dart/pubspec.yaml.bak
+	@sed -i.bak 's/^  gameframework: .*/  gameframework: $(VERSION)/' engines/unreal/dart/pubspec.yaml && rm engines/unreal/dart/pubspec.yaml.bak
+	@echo "$(GREEN)✓ Updated engines/unreal/dart$(NC)"
+	@echo ""
+	@$(MAKE) version-check
+
+publish-dry-run: ## Dry-run publish all packages (validate without publishing)
+	@echo "$(BLUE)Dry-run publishing all packages...$(NC)"
+	@echo ""
+	@for pkg in $(PACKAGES); do \
+		name=$$(grep '^name:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		version=$$(grep '^version:' $$pkg/pubspec.yaml | awk '{print $$2}'); \
+		echo "$(YELLOW)Dry-run: $$name@$$version$(NC)"; \
+		cd $$pkg && dart pub publish --dry-run && cd - > /dev/null || exit 1; \
+		echo "$(GREEN)✓ $$name validation passed$(NC)"; \
+		echo ""; \
+	done
+	@echo "$(GREEN)✓ All packages validated successfully!$(NC)"
+
+release-prepare: ## Prepare for release (run all checks and validation)
+	@echo "$(BLUE)Preparing for release...$(NC)"
+	@echo ""
+	@echo "$(BLUE)1. Checking version consistency...$(NC)"
+	@$(MAKE) version-check
+	@echo ""
+	@echo "$(BLUE)2. Running format check...$(NC)"
+	@$(MAKE) format-check
+	@echo ""
+	@echo "$(BLUE)3. Running analysis...$(NC)"
+	@$(MAKE) analyze
+	@echo ""
+	@echo "$(BLUE)4. Running tests...$(NC)"
+	@$(MAKE) test
+	@echo ""
+	@echo "$(BLUE)5. Validating packages for pub.dev...$(NC)"
+	@$(MAKE) publish-dry-run
+	@echo ""
+	@echo "$(GREEN)✓ All release checks passed!$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Next steps:$(NC)"
+	@echo "  1. Update CHANGELOG.md with release notes"
+	@echo "  2. Commit changes: git add . && git commit -m 'chore: release vX.Y.Z'"
+	@echo "  3. Create tag: make release-tag VERSION=X.Y.Z"
+	@echo "  4. Push: git push origin main --tags"
+
+release-tag: ## Create and push a release tag (usage: make release-tag VERSION=0.0.2)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "$(RED)Error: VERSION variable not set. Usage: make release-tag VERSION=0.0.2$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Creating release tag v$(VERSION)...$(NC)"
+	@# Verify version matches package versions
+	@GAMEFRAMEWORK_VERSION=$$(grep '^version:' packages/gameframework/pubspec.yaml | awk '{print $$2}'); \
+	if [ "$$GAMEFRAMEWORK_VERSION" != "$(VERSION)" ]; then \
+		echo "$(RED)Error: Package version ($$GAMEFRAMEWORK_VERSION) does not match specified VERSION ($(VERSION))$(NC)"; \
+		echo "$(YELLOW)Run: make version-bump VERSION=$(VERSION)$(NC)"; \
+		exit 1; \
+	fi
+	@# Check if tag already exists
+	@if git rev-parse v$(VERSION) >/dev/null 2>&1; then \
+		echo "$(RED)Error: Tag v$(VERSION) already exists$(NC)"; \
+		exit 1; \
+	fi
+	@# Create and push tag
+	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
+	@echo "$(GREEN)✓ Created tag v$(VERSION)$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Push tag to trigger release:$(NC)"
+	@echo "  git push origin v$(VERSION)"
+	@echo ""
+	@echo "$(YELLOW)Or push with commits:$(NC)"
+	@echo "  git push origin main --tags"
 
 ##@ Package-Specific Commands
 

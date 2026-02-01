@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/xraph/gameframework#readme
+    about: Read the documentation for setup guides and examples
+  - name: 💬 Discussions
+    url: https://github.com/xraph/gameframework/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📦 pub.dev
+    url: https://pub.dev/packages/gameframework
+    about: View package details and API documentation on pub.dev

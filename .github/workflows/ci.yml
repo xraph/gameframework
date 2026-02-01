@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    name: Test ${{ matrix.package.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        package:
+          - name: gameframework
+            path: packages/gameframework
+          - name: gameframework_unity
+            path: engines/unity/dart
+          - name: gameframework_unreal
+            path: engines/unreal/dart
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: ${{ matrix.package.path }}
+        run: flutter pub get
+
+      - name: Analyze code
+        working-directory: ${{ matrix.package.path }}
+        run: flutter analyze
+
+      - name: Check formatting
+        working-directory: ${{ matrix.package.path }}
+        run: dart format --set-exit-if-changed .
+
+      - name: Run tests
+        working-directory: ${{ matrix.package.path }}
+        run: flutter test --coverage
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v3
+        with:
+          files: ${{ matrix.package.path }}/coverage/lcov.info
+          flags: ${{ matrix.package.name }}
+          name: ${{ matrix.package.name }}-coverage
+
+  validate-publish:
+    name: Validate pub.dev requirements
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - name: gameframework
+            path: packages/gameframework
+          - name: gameframework_unity
+            path: engines/unity/dart
+          - name: gameframework_unreal
+            path: engines/unreal/dart
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: ${{ matrix.package.path }}
+        run: flutter pub get
+
+      - name: Validate package for pub.dev
+        working-directory: ${{ matrix.package.path }}
+        run: dart pub publish --dry-run
+
+  check-versions:
+    name: Check version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          GAMEFRAMEWORK_VERSION=$(grep '^version:' packages/gameframework/pubspec.yaml | awk '{print $2}')
+          UNITY_VERSION=$(grep '^version:' engines/unity/dart/pubspec.yaml | awk '{print $2}')
+          UNREAL_VERSION=$(grep '^version:' engines/unreal/dart/pubspec.yaml | awk '{print $2}')
+          
+          echo "gameframework: $GAMEFRAMEWORK_VERSION"
+          echo "gameframework_unity: $UNITY_VERSION"
+          echo "gameframework_unreal: $UNREAL_VERSION"
+          
+          # Check if Unity and Unreal depend on the correct gameframework version
+          UNITY_GAMEFRAMEWORK_DEP=$(grep 'gameframework:' engines/unity/dart/pubspec.yaml | awk '{print $2}')
+          UNREAL_GAMEFRAMEWORK_DEP=$(grep 'gameframework:' engines/unreal/dart/pubspec.yaml | awk '{print $2}')
+          
+          echo "Unity depends on gameframework: $UNITY_GAMEFRAMEWORK_DEP"
+          echo "Unreal depends on gameframework: $UNREAL_GAMEFRAMEWORK_DEP"
+          
+          if [[ "$UNITY_GAMEFRAMEWORK_DEP" != "$GAMEFRAMEWORK_VERSION" ]]; then
+            echo "⚠️  Warning: gameframework_unity depends on gameframework $UNITY_GAMEFRAMEWORK_DEP, but gameframework is at version $GAMEFRAMEWORK_VERSION"
+          fi
+          
+          if [[ "$UNREAL_GAMEFRAMEWORK_DEP" != "$GAMEFRAMEWORK_VERSION" ]]; then
+            echo "⚠️  Warning: gameframework_unreal depends on gameframework $UNREAL_GAMEFRAMEWORK_DEP, but gameframework is at version $GAMEFRAMEWORK_VERSION"
+          fi

@@ -4,7 +4,8 @@ environment:
   sdk: ^3.6.0
 workspace:
   - packages/gameframework
-  # - packages/gameframework_stream
+  - packages/gameframework_stream
   - engines/unity/dart
   - engines/unreal/dart
-  - example 
+  - example
+

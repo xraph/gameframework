@@ -69,8 +69,8 @@ If you experience or witness unacceptable behavior, please report it by opening 
 
 ```bash
 # Clone the repository
-git clone https://github.com/xraph/flutter-game-framework.git
-cd flutter-game-framework
+git clone https://github.com/xraph/gameframework.git
+cd gameframework
 
 # Install dependencies
 flutter pub get
@@ -95,7 +95,7 @@ flutter run
 ## Project Structure
 
 ```
-flutter-game-framework/
+gameframework/
 ├── lib/                      # Core Dart framework
 │   ├── src/
 │   │   ├── core/            # Core classes (Widget, Controller, Registry)
@@ -174,8 +174,8 @@ When requesting features, include:
 
 ```bash
 # Fork the repo on GitHub, then:
-git clone https://github.com/YOUR_USERNAME/flutter-game-framework.git
-cd flutter-game-framework
+git clone https://github.com/YOUR_USERNAME/gameframework.git
+cd gameframework
 
 # Create a feature branch
 git checkout -b feature/your-feature-name
@@ -500,8 +500,8 @@ We follow [Semantic Versioning](https://semver.org/):
 
 - **Documentation:** See [docs-files/](docs-files/)
 - **Examples:** Check [example/](example/)
-- **Issues:** [GitHub Issues](https://github.com/xraph/flutter-game-framework/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/xraph/flutter-game-framework/discussions)
+- **Issues:** [GitHub Issues](https://github.com/xraph/gameframework/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/xraph/gameframework/discussions)
 
 ### Questions?
 
