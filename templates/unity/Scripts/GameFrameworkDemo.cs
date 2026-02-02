@@ -349,7 +349,7 @@ namespace GameFrameworkTemplate
             }
             
             // Notify Flutter
-            SendToFlutter("onReset", new { success = true });
+            SendToFlutter("onReset", new ResetData { success = true });
             
             Log("Demo reset");
         }
@@ -393,11 +393,13 @@ namespace GameFrameworkTemplate
 
         private void NotifyFlutterReady()
         {
-            SendToFlutter("onReady", new
+            SendToFlutter("onReady", new ReadyData
             {
                 success = true,
                 initialSpeed = _rotationSpeed,
-                initialAxis = new { x = _rotationAxis.x, y = _rotationAxis.y, z = _rotationAxis.z },
+                initialAxisX = _rotationAxis.x,
+                initialAxisY = _rotationAxis.y,
+                initialAxisZ = _rotationAxis.z,
                 message = "Unity cube demo ready!"
             });
             
@@ -469,6 +471,23 @@ namespace GameFrameworkTemplate
             public AxisData axis;
             public Vector3Data rotation;
             public int messageCount;
+        }
+
+        [Serializable]
+        public class ResetData
+        {
+            public bool success;
+        }
+
+        [Serializable]
+        public class ReadyData
+        {
+            public bool success;
+            public float initialSpeed;
+            public float initialAxisX;
+            public float initialAxisY;
+            public float initialAxisZ;
+            public string message;
         }
 
         #endregion
