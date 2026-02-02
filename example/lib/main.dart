@@ -537,16 +537,10 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   }
 
   void _onMessage(GameMessage message) {
-    _log('Message received: ${message.data}');
+    _log('Message received: ${message.method} - ${message.data}');
     
-    // Parse the message data
-    final json = message.asJson();
-    if (json == null) return;
-    
-    final method = json['method'] as String?;
+    final method = message.method;
     if (method == null) return;
-    
-    _log('Method: $method');
     
     if (method == 'onReady') {
       setState(() {
@@ -556,7 +550,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
       });
     } else if (method == 'onSpeedChanged') {
       try {
-        final data = json['data'] as Map<String, dynamic>?;
+        final data = message.asJson();
         if (data != null) {
           setState(() {
             _currentSpeed = (data['speed'] as num?)?.toDouble() ?? 0;

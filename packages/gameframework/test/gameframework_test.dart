@@ -105,11 +105,15 @@ void main() {
     test('should serialize to map', () {
       final timestamp = DateTime.now();
       final message = GameEngineMessage(
+        target: 'GameFrameworkDemo',
+        method: 'onSpeedChanged',
         data: 'test',
         timestamp: timestamp,
         metadata: {'key': 'value'},
       );
       final map = message.toMap();
+      expect(map['target'], 'GameFrameworkDemo');
+      expect(map['method'], 'onSpeedChanged');
       expect(map['data'], 'test');
       expect(map['timestamp'], timestamp.millisecondsSinceEpoch);
       expect(map['metadata'], {'key': 'value'});
@@ -118,11 +122,15 @@ void main() {
     test('should create from map', () {
       final timestamp = DateTime.now();
       final map = {
+        'target': 'GameFrameworkDemo',
+        'method': 'onReady',
         'data': 'test data',
         'timestamp': timestamp.millisecondsSinceEpoch,
         'metadata': {'key': 'value'},
       };
       final message = GameEngineMessage.fromMap(map);
+      expect(message.target, 'GameFrameworkDemo');
+      expect(message.method, 'onReady');
       expect(message.data, 'test data');
       expect(message.timestamp.millisecondsSinceEpoch,
           timestamp.millisecondsSinceEpoch);

@@ -28,4 +28,10 @@ Provides Unity 2022.3.x support for embedding Unity games in Flutter application
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
   s.swift_version = '5.0'
+  
+  # Unit tests for bridge functionality
+  s.test_spec 'Tests' do |test_spec|
+    test_spec.source_files = 'Tests/**/*'
+    test_spec.dependency 'Flutter'
+  end
 end

@@ -17,10 +17,20 @@ static UnityFramework* unityFramework = nil;
 extern "C" {
     void SetFlutterBridgeController(void* controller) {
         unityEngineController = (__bridge id)controller;
+        if (controller != nil) {
+            NSLog(@"✅ FlutterBridge: Controller registered successfully");
+        } else {
+            NSLog(@"⚠️  FlutterBridge: Controller unregistered");
+        }
     }
     
     void SetUnityFramework(void* framework) {
         unityFramework = (__bridge UnityFramework*)framework;
+        if (framework != nil) {
+            NSLog(@"✅ FlutterBridge: Unity framework registered");
+        } else {
+            NSLog(@"⚠️  FlutterBridge: Unity framework unregistered");
+        }
     }
 }
 
@@ -28,16 +38,20 @@ extern "C" {
 extern "C" {
     void SendMessageToFlutter(const char* target, const char* method, const char* data) {
         if (unityEngineController == nil) {
-            NSLog(@"FlutterBridge: Controller not set");
+            NSLog(@"❌ FlutterBridge ERROR: Controller not set - message dropped!");
+            NSLog(@"   Target: %s, Method: %s", target ? target : "(null)", method ? method : "(null)");
+            NSLog(@"   Fix: Ensure UnityEngineController.registerAsActive() is called before Unity sends messages");
             return;
         }
 
-        NSString* targetStr = [NSString stringWithUTF8String:target];
-        NSString* methodStr = [NSString stringWithUTF8String:method];
-        NSString* dataStr = [NSString stringWithUTF8String:data];
+        NSString* targetStr = target ? [NSString stringWithUTF8String:target] : @"";
+        NSString* methodStr = method ? [NSString stringWithUTF8String:method] : @"";
+        NSString* dataStr = data ? [NSString stringWithUTF8String:data] : @"";
+
+        NSLog(@"✅ FlutterBridge: Sending message %@.%@", targetStr, methodStr);
 
         // Call the controller's onUnityMessage method
-        SEL selector = NSSelectorFromString(@"onUnityMessage:method:data:");
+        SEL selector = NSSelectorFromString(@"onUnityMessageWithTarget:method:data:");
         if ([unityEngineController respondsToSelector:selector]) {
             NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:
                 [unityEngineController methodSignatureForSelector:selector]];
@@ -48,7 +62,8 @@ extern "C" {
             [invocation setArgument:&dataStr atIndex:4];
             [invocation invoke];
         } else {
-            NSLog(@"FlutterBridge: Controller does not respond to onUnityMessage");
+            NSLog(@"❌ FlutterBridge ERROR: Controller does not respond to onUnityMessage selector");
+            NSLog(@"   This may indicate a version mismatch between Unity plugin and Flutter plugin");
         }
     }
 }
@@ -59,17 +74,20 @@ extern "C" {
 extern "C" {
     void _sendMessageToFlutter(const char* message) {
         if (unityEngineController == nil) {
-            NSLog(@"NativeAPI: Controller not set");
+            NSLog(@"❌ NativeAPI ERROR: Controller not set - message dropped!");
+            NSLog(@"   Message: %s", message ? message : "(null)");
             return;
         }
 
-        NSString* messageStr = [NSString stringWithUTF8String:message];
+        NSString* messageStr = message ? [NSString stringWithUTF8String:message] : @"";
         
         // Send as Unity:onMessage
         NSString* targetStr = @"Unity";
         NSString* methodStr = @"onMessage";
         
-        SEL selector = NSSelectorFromString(@"onUnityMessage:method:data:");
+        NSLog(@"✅ NativeAPI: Sending simple message to Flutter");
+        
+        SEL selector = NSSelectorFromString(@"onUnityMessageWithTarget:method:data:");
         if ([unityEngineController respondsToSelector:selector]) {
             NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:
                 [unityEngineController methodSignatureForSelector:selector]];
@@ -79,6 +97,8 @@ extern "C" {
             [invocation setArgument:&methodStr atIndex:3];
             [invocation setArgument:&messageStr atIndex:4];
             [invocation invoke];
+        } else {
+            NSLog(@"❌ NativeAPI ERROR: Controller does not respond to onUnityMessage selector");
         }
     }
 }
@@ -132,7 +152,8 @@ extern "C" {
 extern "C" {
     void _notifyUnityReady() {
         if (unityEngineController == nil) {
-            NSLog(@"NativeAPI: Controller not set");
+            NSLog(@"❌ NativeAPI ERROR: Controller not set - Unity ready notification dropped!");
+            NSLog(@"   This is a critical error - Flutter will not know Unity is ready");
             return;
         }
         
@@ -140,7 +161,7 @@ extern "C" {
         NSString* methodStr = @"onReady";
         NSString* dataStr = @"true";
         
-        SEL selector = NSSelectorFromString(@"onUnityMessage:method:data:");
+        SEL selector = NSSelectorFromString(@"onUnityMessageWithTarget:method:data:");
         if ([unityEngineController respondsToSelector:selector]) {
             NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:
                 [unityEngineController methodSignatureForSelector:selector]];
@@ -151,7 +172,9 @@ extern "C" {
             [invocation setArgument:&dataStr atIndex:4];
             [invocation invoke];
             
-            NSLog(@"NativeAPI: Notified Flutter that Unity is ready");
+            NSLog(@"✅ NativeAPI: Notified Flutter that Unity is ready");
+        } else {
+            NSLog(@"❌ NativeAPI ERROR: Controller does not respond to onUnityMessage selector");
         }
     }
 }

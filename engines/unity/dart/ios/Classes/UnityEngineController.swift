@@ -3,6 +3,16 @@ import UIKit
 import UnityFramework
 import gameframework
 
+// MARK: - C Bridge Function Declarations
+// These functions are defined in FlutterBridge.mm (Objective-C)
+// They set the controller reference used by Unity's SendMessageToFlutter
+
+@_silgen_name("SetFlutterBridgeController")
+func SetFlutterBridgeController(_ controller: UnsafeMutableRawPointer?)
+
+@_silgen_name("SetUnityFramework")
+func SetUnityFramework(_ framework: UnsafeMutableRawPointer?)
+
 /**
  * Unity-specific implementation of GameEngineController
  *
@@ -14,6 +24,12 @@ public class UnityEngineController: GameEngineController {
     private var unityFramework: UnityFramework?
     private var unityView: UIView?
     private var unityReady = false
+    
+    // MARK: - Message Queue Properties
+    // Queue messages received before Flutter's message channel is ready
+    private var messageQueue: [(target: String, method: String, data: String)] = []
+    private var isMessageChannelReady = false
+    private let messageQueueLock = NSLock()
 
     private static let engineTypeValue = "unity"
     private static let engineVersionValue = "2022.3.0" // Should match Unity version
@@ -61,6 +77,11 @@ public class UnityEngineController: GameEngineController {
             }
             
             self.unityFramework = unity
+            
+            // Register Unity framework with Objective-C bridge for native methods
+            let frameworkPtr = Unmanaged.passUnretained(unity as AnyObject).toOpaque()
+            SetUnityFramework(frameworkPtr)
+            NSLog("UnityEngineController: Unity framework registered with Objective-C bridge")
             
             // Register as listener for Unity events
             unity.register(self)
@@ -110,6 +131,9 @@ public class UnityEngineController: GameEngineController {
             
             self.sendEvent(name: "onCreated", data: nil)
             self.sendEvent(name: "onLoaded", data: nil)
+            
+            // Flush any queued messages now that Flutter is ready
+            self.flushMessageQueue()
         } else if attempt < retries {
             // Unity view not ready yet, retry after a short delay
             let delayMs = 100 * (attempt + 1) // 100ms, 200ms, 300ms, 400ms, 500ms
@@ -169,6 +193,15 @@ public class UnityEngineController: GameEngineController {
         // Unregister as active controller
         self.unregisterAsActive()
         
+        // Reset message queue state
+        messageQueueLock.lock()
+        messageQueue.removeAll()
+        isMessageChannelReady = false
+        messageQueueLock.unlock()
+        
+        // Clear Unity framework reference from Objective-C bridge
+        SetUnityFramework(nil)
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
@@ -223,13 +256,58 @@ public class UnityEngineController: GameEngineController {
 
     /**
      * Called from Unity when a message is sent to Flutter
+     * Messages are queued if the Flutter message channel isn't ready yet
+     * 
+     * Note: The Objective-C selector is explicitly defined to match FlutterBridge.mm
      */
+    @objc(onUnityMessageWithTarget:method:data:)
     public func onUnityMessage(target: String, method: String, data: String) {
+        messageQueueLock.lock()
+        defer { messageQueueLock.unlock() }
+        
+        if !isMessageChannelReady {
+            NSLog("UnityEngineController: Queueing message (channel not ready): \(target).\(method)")
+            messageQueue.append((target, method, data))
+            
+            // Limit queue size to prevent memory issues
+            if messageQueue.count > 100 {
+                NSLog("UnityEngineController: Message queue overflow, dropping oldest message")
+                messageQueue.removeFirst()
+            }
+            return
+        }
+        
+        NSLog("UnityEngineController: Forwarding message to Flutter: \(target).\(method)")
         sendEvent(name: "onMessage", data: [
             "target": target,
             "method": method,
             "data": data
         ])
+    }
+    
+    /**
+     * Flush all queued messages to Flutter
+     * Called when the message channel becomes ready
+     */
+    private func flushMessageQueue() {
+        messageQueueLock.lock()
+        let queuedMessages = messageQueue
+        messageQueue.removeAll()
+        isMessageChannelReady = true
+        messageQueueLock.unlock()
+        
+        if !queuedMessages.isEmpty {
+            NSLog("UnityEngineController: Flushing \(queuedMessages.count) queued messages")
+            for msg in queuedMessages {
+                sendEvent(name: "onMessage", data: [
+                    "target": msg.target,
+                    "method": msg.method,
+                    "data": msg.data
+                ])
+            }
+        } else {
+            NSLog("UnityEngineController: Message channel ready (no queued messages)")
+        }
     }
 
     /**
@@ -306,14 +384,24 @@ public class UnityEngineController: GameEngineController {
     }
     
     /// Register this controller as the active one
+    /// This also registers with the Objective-C bridge for Unity messaging
     func registerAsActive() {
         UnityEngineController.activeController = self
+        
+        // Register with Objective-C bridge so Unity's SendMessageToFlutter can reach us
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        SetFlutterBridgeController(selfPtr)
+        
+        NSLog("UnityEngineController: Registered controller with Objective-C bridge")
     }
     
     /// Unregister this controller
+    /// This also clears the Objective-C bridge reference
     func unregisterAsActive() {
         if UnityEngineController.activeController === self {
             UnityEngineController.activeController = nil
+            SetFlutterBridgeController(nil)
+            NSLog("UnityEngineController: Unregistered controller from Objective-C bridge")
         }
     }
 }
