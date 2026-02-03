@@ -152,7 +152,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
         sliderTheme: SliderThemeData(
           activeTrackColor: Colors.blueAccent,
           thumbColor: Colors.blue,
-          overlayColor: Colors.blue.withOpacity(0.2),
+          overlayColor: Colors.blue.withValues(alpha: 0.2),
         ),
       ),
       child: Scaffold(
@@ -171,7 +171,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
                 enableDebugLogs: true,
               ),
             ),
-            
+
             // Overlay UI - Top info card
             Positioned(
               top: 50,
@@ -179,7 +179,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               right: 20,
               child: _buildInfoCard(),
             ),
-            
+
             // Overlay UI - Bottom controls
             Positioned(
               bottom: 20,
@@ -187,30 +187,31 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               right: 20,
               child: _buildControlPanel(),
             ),
-            
+
             // Back button
             Positioned(
               top: 40,
               left: 10,
               child: SafeArea(
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                  icon: const Icon(Icons.arrow_back,
+                      color: Colors.white, size: 28),
                   onPressed: () => Navigator.pop(context),
                   style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withOpacity(0.6),
+                    backgroundColor: Colors.black.withValues(alpha: 0.6),
                   ),
                 ),
               ),
             ),
-            
+
             // Status indicator
             if (!_isReady)
               Container(
                 color: Colors.black87,
-                child: Center(
+                child: const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
+                    children: [
                       CircularProgressIndicator(),
                       SizedBox(height: 16),
                       Text(
@@ -233,7 +234,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
 
   Widget _buildInfoCard() {
     return Card(
-      color: Colors.black.withOpacity(0.85),
+      color: Colors.black.withValues(alpha: 0.85),
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
@@ -255,7 +256,9 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
             ),
             const Divider(color: Colors.white24, height: 20),
             _buildInfoRow(
-              _direction.contains('FROM') ? Icons.arrow_back : Icons.arrow_forward,
+              _direction.contains('FROM')
+                  ? Icons.arrow_back
+                  : Icons.arrow_forward,
               'Direction',
               _direction,
               _direction.contains('FROM') ? Colors.green : Colors.orange,
@@ -303,7 +306,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
 
   Widget _buildControlPanel() {
     return Card(
-      color: Colors.black.withOpacity(0.9),
+      color: Colors.black.withValues(alpha: 0.9),
       elevation: 12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
@@ -321,7 +324,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            
+
             // Speed slider
             _buildSliderControl(
               'Rotation Speed',
@@ -334,14 +337,14 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               },
               Icons.threesixty,
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Axis selector
             _buildAxisSelector(),
-            
+
             const SizedBox(height: 20),
-            
+
             // Action buttons
             Row(
               children: [
@@ -406,7 +409,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.blueAccent.withOpacity(0.2),
+                color: Colors.blueAccent.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -469,7 +472,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     final isSelected = _rotationAxis == axis;
     return Expanded(
       child: Material(
-        color: isSelected ? color : color.withOpacity(0.2),
+        color: isSelected ? color : color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -536,12 +539,11 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     _log('Engine created');
   }
 
-  void _onMessage(GameMessage message) {
+  void _onMessage(GameEngineMessage message) {
     _log('Message received: ${message.method} - ${message.data}');
-    
+
     final method = message.method;
-    if (method == null) return;
-    
+
     if (method == 'onReady') {
       setState(() {
         _isReady = true;
@@ -577,7 +579,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     }
   }
 
-  void _onSceneLoaded(GameSceneInfo sceneInfo) {
+  void _onSceneLoaded(GameSceneLoaded sceneInfo) {
     _log('Scene loaded: ${sceneInfo.name}');
   }
 
@@ -607,7 +609,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
       default:
         axisData = {'x': 0.0, 'y': 1.0, 'z': 0.0};
     }
-    
+
     _controller?.sendJsonMessage('GameFrameworkDemo', 'setAxis', axisData);
     setState(() {
       _lastMessage = 'Axis set to $axis';
@@ -641,7 +643,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
       'b': random.nextDouble() * 0.5 + 0.3,
       'a': 1.0,
     };
-    
+
     _controller?.sendJsonMessage('GameFrameworkDemo', 'setColor', colorData);
     setState(() {
       _lastMessage = 'Color changed';
@@ -656,7 +658,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
         _logs.removeAt(0);
       }
     });
-    print(message);
+    debugPrint(message);
   }
 }
 

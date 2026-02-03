@@ -4,31 +4,30 @@ import 'package:flutter/foundation.dart';
 import 'unity_controller.dart';
 
 /// Message batcher for high-frequency Unity communication.
-/// 
+///
 /// Coalesces multiple messages into single batched transmissions
 /// to reduce overhead for high-frequency updates.
-/// 
+///
 /// Example:
 /// ```dart
 /// final batcher = UnityMessageBatcher(controller);
 /// batcher.configure(maxBatchSize: 50, flushIntervalMs: 16);
-/// 
+///
 /// // In update loop - messages are batched automatically
 /// batcher.queue('Player', 'position', {'x': 1.0, 'y': 2.0});
 /// ```
 class UnityMessageBatcher {
   final UnityController _controller;
-  
+
   final List<_BatchedMessage> _pendingMessages = [];
   Timer? _flushTimer;
-  DateTime? _lastFlushTime;
-  
+
   // Configuration
   int _maxBatchSize = 50;
   int _flushIntervalMs = 16; // ~60fps
   bool _enabled = true;
   bool _enableCoalescing = true;
-  
+
   // Statistics
   int _messagesBatched = 0;
   int _batchesSent = 0;
@@ -47,7 +46,7 @@ class UnityMessageBatcher {
     if (flushIntervalMs != null) _flushIntervalMs = flushIntervalMs;
     if (enabled != null) _enabled = enabled;
     if (enableCoalescing != null) _enableCoalescing = enableCoalescing;
-    
+
     // Restart timer with new interval
     _startTimer();
   }
@@ -105,7 +104,6 @@ class UnityMessageBatcher {
 
     final messages = List<_BatchedMessage>.from(_pendingMessages);
     _pendingMessages.clear();
-    _lastFlushTime = DateTime.now();
 
     if (messages.length == 1) {
       // Single message - send directly
@@ -119,7 +117,8 @@ class UnityMessageBatcher {
     _batchesSent++;
   }
 
-  Future<void> _sendImmediate(String target, String method, dynamic data) async {
+  Future<void> _sendImmediate(
+      String target, String method, dynamic data) async {
     try {
       if (data is Map<String, dynamic>) {
         await _controller.sendJsonMessage(target, method, data);
@@ -138,18 +137,20 @@ class UnityMessageBatcher {
       final batchData = {
         'batch': true,
         'count': messages.length,
-        'messages': messages.map((m) => {
-          't': m.target,
-          'm': m.method,
-          'd': m.data is String ? m.data : jsonEncode(m.data),
-          'dt': m.data is String ? 's' : 'j',
-        }).toList(),
+        'messages': messages
+            .map((m) => {
+                  't': m.target,
+                  'm': m.method,
+                  'd': m.data is String ? m.data : jsonEncode(m.data),
+                  'dt': m.data is String ? 's' : 'j',
+                })
+            .toList(),
       };
 
       await _controller.sendJsonMessage('_batch', 'onBatch', batchData);
     } catch (e) {
       debugPrint('UnityMessageBatcher: Batch send failed: $e');
-      
+
       // Fallback: send individually
       for (final msg in messages) {
         await _sendImmediate(msg.target, msg.method, msg.data);
@@ -169,11 +170,11 @@ class UnityMessageBatcher {
 
   /// Get batching statistics.
   BatcherStatistics get statistics => BatcherStatistics(
-    messagesBatched: _messagesBatched,
-    batchesSent: _batchesSent,
-    messagesCoalesced: _messagesCoalesced,
-    pendingCount: _pendingMessages.length,
-  );
+        messagesBatched: _messagesBatched,
+        batchesSent: _batchesSent,
+        messagesCoalesced: _messagesCoalesced,
+        pendingCount: _pendingMessages.length,
+      );
 
   /// Reset statistics.
   void resetStatistics() {
@@ -217,35 +218,33 @@ class BatcherStatistics {
     required this.pendingCount,
   });
 
-  double get averageMessagesPerBatch => 
+  double get averageMessagesPerBatch =>
       batchesSent > 0 ? messagesBatched / batchesSent : 0;
 
   @override
-  String toString() => 
-      'Batched=$messagesBatched, Sent=$batchesSent, '
+  String toString() => 'Batched=$messagesBatched, Sent=$batchesSent, '
       'Coalesced=$messagesCoalesced, Pending=$pendingCount, '
       'Avg/Batch=${averageMessagesPerBatch.toStringAsFixed(1)}';
 }
 
-
 /// Message throttler for rate-limited communication.
-/// 
+///
 /// Limits the rate of messages sent to Unity to prevent overwhelming
 /// the communication channel.
-/// 
+///
 /// Example:
 /// ```dart
 /// final throttler = UnityMessageThrottler(controller);
-/// 
+///
 /// // Configure rate limit (60 messages per second)
 /// throttler.setRate('Player:position', 60);
-/// 
+///
 /// // Send throttled messages
 /// throttler.send('Player', 'position', data); // Rate limited
 /// ```
 class UnityMessageThrottler {
   final UnityController _controller;
-  
+
   final Map<String, _ThrottleConfig> _configs = {};
   final Map<String, DateTime> _lastSendTimes = {};
   final Map<String, dynamic> _pendingValues = {};
@@ -253,7 +252,9 @@ class UnityMessageThrottler {
   UnityMessageThrottler(this._controller);
 
   /// Set rate limit for a target:method combination.
-  void setRate(String key, int messagesPerSecond, {
+  void setRate(
+    String key,
+    int messagesPerSecond, {
     ThrottleStrategy strategy = ThrottleStrategy.keepLatest,
   }) {
     _configs[key] = _ThrottleConfig(
@@ -277,7 +278,7 @@ class UnityMessageThrottler {
     final now = DateTime.now();
     final lastSend = _lastSendTimes[key];
 
-    if (lastSend == null || 
+    if (lastSend == null ||
         now.difference(lastSend).inMilliseconds >= config.intervalMs) {
       // Allowed to send
       _lastSendTimes[key] = now;
@@ -295,7 +296,8 @@ class UnityMessageThrottler {
           break;
         case ThrottleStrategy.keepFirst:
           // Only store if not already pending
-          _pendingValues.putIfAbsent(key, () => _PendingMessage(target, method, data));
+          _pendingValues.putIfAbsent(
+              key, () => _PendingMessage(target, method, data));
           break;
       }
     }
@@ -313,7 +315,8 @@ class UnityMessageThrottler {
     }
   }
 
-  Future<void> _sendImmediate(String target, String method, dynamic data) async {
+  Future<void> _sendImmediate(
+      String target, String method, dynamic data) async {
     try {
       if (data is Map<String, dynamic>) {
         await _controller.sendJsonMessage(target, method, data);
@@ -352,14 +355,13 @@ class _PendingMessage {
 enum ThrottleStrategy {
   /// Drop excess messages entirely
   drop,
-  
+
   /// Keep only the latest value (replace pending)
   keepLatest,
-  
+
   /// Keep only the first value (ignore subsequent)
   keepFirst,
 }
-
 
 /// Extension methods for UnityController with performance utilities.
 extension UnityControllerPerformance on UnityController {
