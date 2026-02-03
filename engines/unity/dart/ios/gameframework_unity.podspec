@@ -8,6 +8,11 @@ Pod::Spec.new do |s|
   s.description      = <<-DESC
 Unity Engine integration plugin for the Flutter Game Framework.
 Provides Unity 2022.3.x support for embedding Unity games in Flutter applications.
+
+IMPORTANT: This plugin requires UnityFramework.framework to be vendored by the
+consuming plugin (your game plugin). The framework is NOT included in this package
+because each game has its own Unity build. Use 'game sync unity --platform ios'
+to sync your Unity export to your plugin's ios/ directory.
                        DESC
   s.homepage         = 'https://github.com/xraph/gameframework'
   s.license          = { :file => '../../../LICENSE' }
@@ -18,15 +23,30 @@ Provides Unity 2022.3.x support for embedding Unity games in Flutter application
   s.dependency 'gameframework'
   s.platform = :ios, '12.0'
 
-  # Unity Framework will be added by Unity export
-  s.ios.vendored_frameworks = 'UnityFramework.framework'
+  # UnityFramework is provided by the consuming plugin (e.g., your game plugin)
+  # NOT vendored here because each game has its own Unity build.
+  # The consumer plugin MUST vendor UnityFramework.framework in their podspec.
   
-  # Preserve Unity Data folder structure (critical for IL2CPP to work)
-  # This ensures the Data folder is copied with the framework to the app bundle
-  s.preserve_paths = 'UnityFramework.framework/Data'
+  # Preserve the framework if it exists locally (symlink or actual)
+  # This is needed for the Swift compiler to find the module
+  unity_framework_path = File.join(__dir__, 'UnityFramework.framework')
+  if File.exist?(unity_framework_path) || File.symlink?(unity_framework_path)
+    s.preserve_paths = 'UnityFramework.framework', 'UnityFramework.framework/Data'
+    # Don't vendor - let the consumer plugin vendor it to avoid conflicts
+    # s.ios.vendored_frameworks = 'UnityFramework.framework'
+  end
 
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  # Configure framework search paths to find UnityFramework from sibling pods
+  # This allows gameframework_unity to import UnityFramework that is vendored
+  # by another pod (the consumer plugin like 'green')
+  s.pod_target_xcconfig = { 
+    'DEFINES_MODULE' => 'YES', 
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    # Search for frameworks in the local directory (symlink), Pods build directory, and sibling plugins
+    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}" "${PODS_CONFIGURATION_BUILD_DIR}" "${PODS_ROOT}/../.symlinks/plugins/*/ios"',
+    # Allow weak linking to UnityFramework
+    'OTHER_LDFLAGS' => '$(inherited) -ObjC'
+  }
   s.swift_version = '5.0'
   
   # Unit tests for bridge functionality

@@ -323,6 +323,7 @@ namespace Xraph.GameFramework.Unity
             }
 
             // Slow path: find handler from registered behaviours
+            bool foundHandler = false;
             lock (_lock)
             {
                 // Check singleton handlers
@@ -343,14 +344,158 @@ namespace Xraph.GameFramework.Unity
                         if (registered.MethodHandlers.TryGetValue(method, out var handler))
                         {
                             InvokeHandler(handler, data);
+                            foundHandler = true;
                             // Don't return - broadcast to all handlers
                         }
                     }
+                    if (foundHandler) return;
                 }
+            }
+
+            // NEW: Try type-based discovery as fallback
+            if (TryDiscoverAndRoute(target, method, data))
+            {
+                return;
             }
 
             // Fallback: try direct SendMessage to GameObject
             FallbackToGameObject(target, method, data);
+        }
+
+        /// <summary>
+        /// Attempt to discover and route message to a FlutterMonoBehaviour by type name.
+        /// This handles cases where the target wasn't registered yet or registration failed.
+        /// </summary>
+        private bool TryDiscoverAndRoute(string target, string method, string data)
+        {
+            // Find any FlutterMonoBehaviour with matching type name or TargetName
+            var allBehaviours = FindObjectsOfType<FlutterMonoBehaviour>();
+            
+            foreach (var behaviour in allBehaviours)
+            {
+                var type = behaviour.GetType();
+                
+                // Match by type name or by the behaviour's TargetName property
+                // Use reflection to get TargetName since it's protected
+                string behaviourTargetName = GetTargetName(behaviour);
+                
+                if (type.Name == target || behaviourTargetName == target)
+                {
+                    // Found a matching behaviour - auto-register it
+                    bool isSingleton = GetIsSingleton(behaviour);
+                    
+                    lock (_lock)
+                    {
+                        if (!_targetHandlers.ContainsKey(target) && !_singletonHandlers.ContainsKey(target))
+                        {
+                            Debug.LogWarning($"[MessageRouter] Auto-registering discovered target: '{target}' " +
+                                $"(GameObject: '{behaviour.gameObject.name}', Type: {type.Name})");
+                            
+                            var registered = new RegisteredBehaviour
+                            {
+                                Behaviour = behaviour,
+                                TargetName = target,
+                                IsSingleton = isSingleton
+                            };
+                            
+                            CacheMethodHandlers(registered);
+                            
+                            if (isSingleton)
+                            {
+                                _singletonHandlers[target] = registered;
+                            }
+                            else
+                            {
+                                if (!_targetHandlers.TryGetValue(target, out var handlers))
+                                {
+                                    handlers = new List<RegisteredBehaviour>();
+                                    _targetHandlers[target] = handlers;
+                                }
+                                handlers.Add(registered);
+                            }
+                        }
+                    }
+                    
+                    // Try to dispatch again now that it's registered
+                    string cacheKey = $"{target}:{method}";
+                    if (_cachedHandlers.TryGetValue(cacheKey, out var cached))
+                    {
+                        InvokeHandler(cached.Handler, data);
+                        return true;
+                    }
+                    
+                    // Check the registered handlers
+                    lock (_lock)
+                    {
+                        if (_singletonHandlers.TryGetValue(target, out var singleton))
+                        {
+                            if (singleton.MethodHandlers.TryGetValue(method, out var handler))
+                            {
+                                InvokeHandler(handler, data);
+                                return true;
+                            }
+                        }
+                        
+                        if (_targetHandlers.TryGetValue(target, out var handlers))
+                        {
+                            foreach (var registered in handlers)
+                            {
+                                if (registered.MethodHandlers.TryGetValue(method, out var handler))
+                                {
+                                    InvokeHandler(handler, data);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return false;
+        }
+
+        /// <summary>
+        /// Get the TargetName property from a FlutterMonoBehaviour using reflection.
+        /// </summary>
+        private string GetTargetName(FlutterMonoBehaviour behaviour)
+        {
+            try
+            {
+                var property = behaviour.GetType().GetProperty("TargetName", 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Public);
+                
+                if (property != null)
+                {
+                    return property.GetValue(behaviour) as string ?? behaviour.gameObject.name;
+                }
+            }
+            catch { }
+            
+            return behaviour.gameObject.name;
+        }
+
+        /// <summary>
+        /// Get the IsSingleton property from a FlutterMonoBehaviour using reflection.
+        /// </summary>
+        private bool GetIsSingleton(FlutterMonoBehaviour behaviour)
+        {
+            try
+            {
+                var property = behaviour.GetType().GetProperty("IsSingleton", 
+                    System.Reflection.BindingFlags.Instance | 
+                    System.Reflection.BindingFlags.NonPublic | 
+                    System.Reflection.BindingFlags.Public);
+                
+                if (property != null)
+                {
+                    return (bool)(property.GetValue(behaviour) ?? false);
+                }
+            }
+            catch { }
+            
+            return false;
         }
 
         private void InvokeHandler(MethodHandler handler, string data)
@@ -440,10 +585,66 @@ namespace Xraph.GameFramework.Unity
                     Debug.Log($"[MessageRouter] Fallback SendMessage to GameObject '{target}'");
                 }
             }
-            else if (enableDebugLogging)
+            else
             {
-                Debug.LogWarning($"[MessageRouter] No handler found for {target}:{method}");
+                // Provide helpful error message with suggestions
+                LogRoutingError(target, method);
             }
+        }
+
+        /// <summary>
+        /// Log a helpful error message when message routing fails.
+        /// </summary>
+        private void LogRoutingError(string target, string method)
+        {
+            // Build helpful error message
+            var message = new System.Text.StringBuilder();
+            message.AppendLine($"[MessageRouter] Target '{target}' not found for method '{method}'!");
+            message.AppendLine();
+            message.AppendLine("Possible fixes:");
+            message.AppendLine($"  1. Create a GameObject with a script that has TargetName = \"{target}\"");
+            message.AppendLine($"  2. Create a GameObject named \"{target}\" with the appropriate script");
+            message.AppendLine($"  3. Ensure your FlutterMonoBehaviour registers before messages are sent");
+            message.AppendLine($"  4. Add \"{target}\" to GameFrameworkBootstrapper.autoCreateTargets");
+            message.AppendLine();
+            
+            // Find similar targets that might be a typo
+            var registeredTargets = new List<string>();
+            lock (_lock)
+            {
+                registeredTargets.AddRange(_singletonHandlers.Keys);
+                registeredTargets.AddRange(_targetHandlers.Keys);
+            }
+            
+            if (registeredTargets.Count > 0)
+            {
+                message.AppendLine($"Registered targets: {string.Join(", ", registeredTargets)}");
+            }
+            else
+            {
+                message.AppendLine("No targets are currently registered.");
+            }
+            
+            // Try to find GameObjects with scripts that have similar names
+            var allBehaviours = FindObjectsOfType<FlutterMonoBehaviour>();
+            if (allBehaviours.Length > 0)
+            {
+                message.AppendLine();
+                message.AppendLine("Found FlutterMonoBehaviour instances in scene:");
+                foreach (var behaviour in allBehaviours)
+                {
+                    string behaviourTarget = GetTargetName(behaviour);
+                    message.AppendLine($"  - GameObject '{behaviour.gameObject.name}' with TargetName '{behaviourTarget}' ({behaviour.GetType().Name})");
+                }
+            }
+            else
+            {
+                message.AppendLine();
+                message.AppendLine("No FlutterMonoBehaviour instances found in scene.");
+                message.AppendLine("Did you forget to add a script to a GameObject?");
+            }
+            
+            Debug.LogError(message.ToString());
         }
 
         #endregion

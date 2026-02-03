@@ -7,16 +7,27 @@ using Xraph.GameFramework.Unity;
 namespace GameFrameworkTemplate
 {
     /// <summary>
-    /// Interactive rotating cube demo for Game Framework.
+    /// Interactive rotating cube demo for Game Framework with physics-based touch controls.
     /// 
-    /// Features:
-    /// - Rotating cube with controllable speed and direction
-    /// - Real-time UI showing speed, messages, and communication direction
-    /// - Bidirectional Flutter-Unity communication
-    /// - Smooth animations and visual feedback
+    /// FEATURES:
+    /// - Swipe/touch to spin the cube with physics-based momentum
+    /// - Speed gradually decays back to the Flutter-set target speed
+    /// - Real-time speed feedback sent to Flutter
+    /// - Compact HUD showing current state
     /// 
-    /// Attach this script to a GameObject named "GameFrameworkDemo" in your scene.
-    /// The script will automatically create the cube and UI elements.
+    /// SETUP OPTIONS (choose one):
+    /// 
+    /// 1. AUTOMATIC (Recommended):
+    ///    - GameFrameworkBootstrapper auto-creates this at runtime
+    ///    - Messages from Flutter routed via MessageRouter
+    /// 
+    /// 2. MANUAL:
+    ///    - Create empty GameObject, attach this script
+    ///    - Routing uses TargetName property, not GameObject name
+    /// 
+    /// 3. EDITOR TOOLS:
+    ///    - "Game Framework > Quick Fix > Add Demo Object" menu
+    ///    - "Game Framework > Validate Scene" to check config
     /// </summary>
     public class GameFrameworkDemo : FlutterMonoBehaviour
     {
@@ -29,9 +40,25 @@ namespace GameFrameworkTemplate
         [Tooltip("Cube color")]
         [SerializeField] private Color cubeColor = new Color(0.3f, 0.6f, 1f);
 
+        [Header("Physics Configuration")]
+        [Tooltip("How much swipe velocity affects rotation (multiplier)")]
+        [SerializeField] private float swipeSensitivity = 0.5f;
+
+        [Tooltip("Maximum speed from swipe")]
+        [SerializeField] private float maxSwipeSpeed = 720f;
+
+        [Tooltip("How fast the speed decays back to target (per second)")]
+        [SerializeField] private float speedDecayRate = 60f;
+
+        [Tooltip("Send speed updates to Flutter at this rate (Hz)")]
+        [SerializeField] private float speedUpdateRate = 10f;
+
         [Header("UI Configuration")]
         [Tooltip("Enable verbose logging")]
         [SerializeField] private bool verboseLogging = true;
+
+        [Tooltip("Show compact HUD")]
+        [SerializeField] private bool showHud = true;
 
         #endregion
 
@@ -46,18 +73,36 @@ namespace GameFrameworkTemplate
 
         private GameObject _cube;
         private GameObject _uiCanvas;
-        private TextMeshProUGUI _speedText;
-        private TextMeshProUGUI _messageText;
-        private TextMeshProUGUI _directionText;
         
-        private float _rotationSpeed = 50f;
+        // Compact HUD elements
+        private TextMeshProUGUI _hudSpeedText;
+        private TextMeshProUGUI _hudStatusText;
+        private Image _hudBackground;
+        private Image _touchIndicator;
+        
+        // Rotation state
+        private float _targetSpeed = 50f;      // Speed set by Flutter slider
+        private float _currentSpeed = 50f;     // Actual current speed (affected by touch)
         private Vector3 _rotationAxis = Vector3.up;
-        private string _lastMessage = "Waiting for messages...";
+        private string _lastMessage = "Ready";
         private string _lastDirection = "---";
         private int _messageCount = 0;
         
-        private Color _fromFlutterColor = new Color(0.2f, 0.8f, 0.4f); // Green
-        private Color _toFlutterColor = new Color(0.9f, 0.4f, 0.2f);   // Orange
+        // Touch/Swipe state
+        private Vector2 _touchStartPos;
+        private Vector2 _lastTouchPos;
+        private float _touchStartTime;
+        private bool _isTouching = false;
+        private float _swipeVelocity = 0f;
+        private bool _isDecaying = false;
+        
+        // Speed reporting
+        private float _lastSpeedUpdateTime;
+        private float _lastReportedSpeed;
+        
+        // Colors
+        private Color _fromFlutterColor = new Color(0.2f, 0.8f, 0.4f);
+        private Color _toFlutterColor = new Color(0.9f, 0.4f, 0.2f);
 
         #endregion
 
@@ -65,9 +110,11 @@ namespace GameFrameworkTemplate
 
         protected override void Awake()
         {
-            base.Awake();
             EnableDebugLogging = verboseLogging;
-            _rotationSpeed = initialSpeed;
+            base.Awake();
+            
+            _targetSpeed = initialSpeed;
+            _currentSpeed = initialSpeed;
             
             Log("GameFrameworkDemo: Initialized");
         }
@@ -75,20 +122,29 @@ namespace GameFrameworkTemplate
         void Start()
         {
             CreateCube();
-            CreateUI();
+            CreateCompactHUD();
             NotifyFlutterReady();
         }
 
         void Update()
         {
+            // Handle touch input
+            HandleTouchInput();
+            
+            // Handle speed decay back to target
+            HandleSpeedDecay();
+            
             // Rotate the cube
             if (_cube != null)
             {
-                _cube.transform.Rotate(_rotationAxis, _rotationSpeed * Time.deltaTime);
+                _cube.transform.Rotate(_rotationAxis, _currentSpeed * Time.deltaTime);
             }
             
-            // Update UI
-            UpdateUI();
+            // Update HUD
+            UpdateHUD();
+            
+            // Send speed updates to Flutter
+            SendSpeedUpdateToFlutter();
         }
 
         protected override void OnDestroy()
@@ -99,27 +155,208 @@ namespace GameFrameworkTemplate
 
         #endregion
 
+        #region Touch Input Handling
+
+        private void HandleTouchInput()
+        {
+            // Handle mouse input (for editor testing) and touch
+            bool touchBegan = false;
+            bool touchMoved = false;
+            bool touchEnded = false;
+            Vector2 touchPosition = Vector2.zero;
+
+#if UNITY_EDITOR
+            // Mouse input for editor
+            if (Input.GetMouseButtonDown(0))
+            {
+                touchBegan = true;
+                touchPosition = Input.mousePosition;
+            }
+            else if (Input.GetMouseButton(0))
+            {
+                touchMoved = true;
+                touchPosition = Input.mousePosition;
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                touchEnded = true;
+                touchPosition = Input.mousePosition;
+            }
+#else
+            // Touch input for device
+            if (Input.touchCount > 0)
+            {
+                Touch touch = Input.GetTouch(0);
+                touchPosition = touch.position;
+                
+                switch (touch.phase)
+                {
+                    case TouchPhase.Began:
+                        touchBegan = true;
+                        break;
+                    case TouchPhase.Moved:
+                    case TouchPhase.Stationary:
+                        touchMoved = true;
+                        break;
+                    case TouchPhase.Ended:
+                    case TouchPhase.Canceled:
+                        touchEnded = true;
+                        break;
+                }
+            }
+#endif
+
+            if (touchBegan)
+            {
+                OnTouchBegan(touchPosition);
+            }
+            else if (touchMoved && _isTouching)
+            {
+                OnTouchMoved(touchPosition);
+            }
+            else if (touchEnded && _isTouching)
+            {
+                OnTouchEnded(touchPosition);
+            }
+        }
+
+        private void OnTouchBegan(Vector2 position)
+        {
+            _touchStartPos = position;
+            _lastTouchPos = position;
+            _touchStartTime = Time.time;
+            _isTouching = true;
+            _isDecaying = false;
+            
+            // Show touch indicator
+            if (_touchIndicator != null)
+            {
+                _touchIndicator.color = new Color(0.3f, 0.7f, 1f, 0.8f);
+            }
+        }
+
+        private void OnTouchMoved(Vector2 position)
+        {
+            Vector2 delta = position - _lastTouchPos;
+            _lastTouchPos = position;
+            
+            // Calculate swipe velocity based on horizontal movement
+            // Positive = clockwise (when looking down Y axis)
+            float swipeSpeed = delta.x * swipeSensitivity;
+            
+            // Apply directly to current speed for immediate feedback
+            _currentSpeed = Mathf.Clamp(_currentSpeed + swipeSpeed, -maxSwipeSpeed, maxSwipeSpeed);
+        }
+
+        private void OnTouchEnded(Vector2 position)
+        {
+            // Calculate final swipe velocity
+            float duration = Time.time - _touchStartTime;
+            if (duration > 0.01f)
+            {
+                Vector2 totalDelta = position - _touchStartPos;
+                _swipeVelocity = (totalDelta.x / duration) * swipeSensitivity * 0.1f;
+                
+                // Apply momentum
+                _currentSpeed = Mathf.Clamp(_currentSpeed + _swipeVelocity, -maxSwipeSpeed, maxSwipeSpeed);
+            }
+            
+            _isTouching = false;
+            _isDecaying = true;
+            
+            // Update UI to show touch ended
+            if (_touchIndicator != null)
+            {
+                _touchIndicator.color = new Color(0.5f, 0.5f, 0.5f, 0.3f);
+            }
+            
+            _lastMessage = "Spin!";
+            _lastDirection = "TOUCH";
+            
+            Log($"Touch ended: velocity={_swipeVelocity:F1}, speed={_currentSpeed:F1}");
+        }
+
+        private void HandleSpeedDecay()
+        {
+            if (!_isTouching && _isDecaying)
+            {
+                // Smoothly decay current speed back to target speed
+                float diff = _targetSpeed - _currentSpeed;
+                
+                if (Mathf.Abs(diff) < 0.5f)
+                {
+                    // Close enough, snap to target
+                    _currentSpeed = _targetSpeed;
+                    _isDecaying = false;
+                }
+                else
+                {
+                    // Decay towards target
+                    float decayAmount = speedDecayRate * Time.deltaTime;
+                    _currentSpeed = Mathf.MoveTowards(_currentSpeed, _targetSpeed, decayAmount);
+                }
+            }
+        }
+
+        #endregion
+
+        #region Speed Reporting to Flutter
+
+        private void SendSpeedUpdateToFlutter()
+        {
+            // Throttle updates
+            if (Time.time - _lastSpeedUpdateTime < (1f / speedUpdateRate))
+                return;
+                
+            // Only send if speed changed significantly
+            if (Mathf.Abs(_currentSpeed - _lastReportedSpeed) < 0.5f)
+                return;
+            
+            _lastSpeedUpdateTime = Time.time;
+            _lastReportedSpeed = _currentSpeed;
+            
+            // Send current speed to Flutter
+            SendToFlutter("onCurrentSpeed", new CurrentSpeedData
+            {
+                speed = _currentSpeed,
+                rpm = (_currentSpeed / 360f) * 60f,
+                targetSpeed = _targetSpeed,
+                isTouch = _isDecaying || _isTouching
+            });
+        }
+
+        #endregion
+
         #region Scene Setup
 
         private void CreateCube()
         {
-            // Create cube
             _cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _cube.name = "RotatingCube";
             _cube.transform.position = Vector3.zero;
             _cube.transform.localScale = Vector3.one * 2f;
             
-            // Add material
             var renderer = _cube.GetComponent<Renderer>();
             if (renderer != null)
             {
-                renderer.material = new Material(Shader.Find("Standard"));
-                renderer.material.color = cubeColor;
-                renderer.material.SetFloat("_Metallic", 0.5f);
-                renderer.material.SetFloat("_Glossiness", 0.8f);
+                var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color") ?? Shader.Find("Diffuse");
+                if (shader == null)
+                {
+                    LogError("Could not find any shader!");
+                }
+                else
+                {
+                    renderer.material = new Material(shader);
+                    renderer.material.color = cubeColor;
+                    
+                    if (shader.name == "Standard")
+                    {
+                        renderer.material.SetFloat("_Metallic", 0.5f);
+                        renderer.material.SetFloat("_Glossiness", 0.8f);
+                    }
+                }
             }
             
-            // Position camera
             var camera = Camera.main;
             if (camera != null)
             {
@@ -129,7 +366,6 @@ namespace GameFrameworkTemplate
                 camera.backgroundColor = new Color(0.1f, 0.1f, 0.15f);
             }
             
-            // Add light
             var light = new GameObject("DirectionalLight");
             var lightComp = light.AddComponent<Light>();
             lightComp.type = LightType.Directional;
@@ -139,9 +375,10 @@ namespace GameFrameworkTemplate
             Log("Cube created successfully");
         }
 
-        private void CreateUI()
+        private void CreateCompactHUD()
         {
-            // Create canvas
+            if (!showHud) return;
+            
             _uiCanvas = new GameObject("DemoCanvas");
             var canvas = _uiCanvas.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -153,81 +390,137 @@ namespace GameFrameworkTemplate
             
             _uiCanvas.AddComponent<GraphicRaycaster>();
             
-            // Create UI panel (top center)
-            var panel = new GameObject("InfoPanel");
-            panel.transform.SetParent(_uiCanvas.transform, false);
+            // Create compact HUD panel (bottom-left corner)
+            var hudPanel = new GameObject("HudPanel");
+            hudPanel.transform.SetParent(_uiCanvas.transform, false);
             
-            var panelRect = panel.AddComponent<RectTransform>();
-            panelRect.anchorMin = new Vector2(0.5f, 1f);
-            panelRect.anchorMax = new Vector2(0.5f, 1f);
-            panelRect.pivot = new Vector2(0.5f, 1f);
-            panelRect.anchoredPosition = new Vector2(0, -20);
-            panelRect.sizeDelta = new Vector2(600, 200);
+            var panelRect = hudPanel.AddComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0f, 0f);
+            panelRect.anchorMax = new Vector2(0f, 0f);
+            panelRect.pivot = new Vector2(0f, 0f);
+            panelRect.anchoredPosition = new Vector2(20, 120); // Above Flutter's panel
+            panelRect.sizeDelta = new Vector2(200, 70);
             
-            var panelImage = panel.AddComponent<Image>();
-            panelImage.color = new Color(0, 0, 0, 0.85f);
+            _hudBackground = hudPanel.AddComponent<Image>();
+            _hudBackground.color = new Color(0, 0, 0, 0.6f);
             
-            // Create text fields
-            _speedText = CreateTextField(panel.transform, new Vector2(0, -30), "Speed: 0 rpm");
-            _messageText = CreateTextField(panel.transform, new Vector2(0, -80), "Message: Waiting...");
-            _directionText = CreateTextField(panel.transform, new Vector2(0, -130), "Direction: ---");
+            // Add rounded corners effect via child
+            var cornerMask = hudPanel.AddComponent<UnityEngine.UI.Outline>();
+            cornerMask.effectColor = new Color(1, 1, 1, 0.1f);
+            cornerMask.effectDistance = new Vector2(1, 1);
             
-            // Style text fields
-            _speedText.fontSize = 28;
-            _speedText.fontStyle = FontStyles.Bold;
-            _speedText.color = new Color(1f, 1f, 0.3f);
+            // Speed text
+            _hudSpeedText = CreateHudText(hudPanel.transform, new Vector2(10, -12), "0°/s", 22, TextAlignmentOptions.Left);
+            _hudSpeedText.fontStyle = FontStyles.Bold;
+            _hudSpeedText.color = new Color(1f, 0.9f, 0.3f);
             
-            _messageText.fontSize = 24;
-            _messageText.color = new Color(0.9f, 0.9f, 0.9f);
+            // Status text  
+            _hudStatusText = CreateHudText(hudPanel.transform, new Vector2(10, -42), "Ready", 14, TextAlignmentOptions.Left);
+            _hudStatusText.color = new Color(0.8f, 0.8f, 0.8f);
             
-            _directionText.fontSize = 26;
-            _directionText.fontStyle = FontStyles.Bold;
+            // Touch indicator (right side of HUD)
+            var touchIndicatorObj = new GameObject("TouchIndicator");
+            touchIndicatorObj.transform.SetParent(hudPanel.transform, false);
             
-            Log("UI created successfully");
+            var touchRect = touchIndicatorObj.AddComponent<RectTransform>();
+            touchRect.anchorMin = new Vector2(1f, 0.5f);
+            touchRect.anchorMax = new Vector2(1f, 0.5f);
+            touchRect.pivot = new Vector2(1f, 0.5f);
+            touchRect.anchoredPosition = new Vector2(-15, 0);
+            touchRect.sizeDelta = new Vector2(40, 40);
+            
+            _touchIndicator = touchIndicatorObj.AddComponent<Image>();
+            _touchIndicator.color = new Color(0.5f, 0.5f, 0.5f, 0.3f);
+            
+            // Add touch icon text
+            var touchIcon = CreateHudText(touchIndicatorObj.transform, Vector2.zero, "👆", 20, TextAlignmentOptions.Center);
+            touchIcon.rectTransform.anchorMin = Vector2.zero;
+            touchIcon.rectTransform.anchorMax = Vector2.one;
+            touchIcon.rectTransform.offsetMin = Vector2.zero;
+            touchIcon.rectTransform.offsetMax = Vector2.zero;
+            
+            Log("Compact HUD created");
         }
 
-        private TextMeshProUGUI CreateTextField(Transform parent, Vector2 position, string text)
+        private TextMeshProUGUI CreateHudText(Transform parent, Vector2 position, string text, float fontSize, TextAlignmentOptions alignment)
         {
-            var textObj = new GameObject("TextField");
+            var textObj = new GameObject("HudText");
             textObj.transform.SetParent(parent, false);
             
             var rect = textObj.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 1f);
-            rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = position;
-            rect.sizeDelta = new Vector2(550, 40);
+            rect.sizeDelta = new Vector2(-20, 30);
             
             var tmp = textObj.AddComponent<TextMeshProUGUI>();
             tmp.text = text;
-            tmp.fontSize = 24;
-            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.fontSize = fontSize;
+            tmp.alignment = alignment;
             tmp.color = Color.white;
-            
-            // Add shadow for better visibility
-            var shadow = textObj.AddComponent<UnityEngine.UI.Shadow>();
-            shadow.effectColor = new Color(0, 0, 0, 0.8f);
-            shadow.effectDistance = new Vector2(2, -2);
             
             return tmp;
         }
 
-        private void UpdateUI()
+        private void UpdateHUD()
         {
-            if (_speedText != null)
+            if (!showHud) return;
+            
+            if (_hudSpeedText != null)
             {
-                float rpm = (_rotationSpeed / 360f) * 60f;
-                _speedText.text = $"Speed: {rpm:F1} RPM ({_rotationSpeed:F0}°/s)";
+                float rpm = Mathf.Abs(_currentSpeed / 360f) * 60f;
+                string direction = _currentSpeed >= 0 ? "→" : "←";
+                _hudSpeedText.text = $"{direction} {Mathf.Abs(_currentSpeed):F0}°/s";
+                
+                // Color based on whether touch is active
+                if (_isTouching || _isDecaying)
+                {
+                    _hudSpeedText.color = new Color(0.3f, 0.8f, 1f); // Cyan when touch active
+                }
+                else
+                {
+                    _hudSpeedText.color = new Color(1f, 0.9f, 0.3f); // Yellow normally
+                }
             }
             
-            if (_messageText != null)
+            if (_hudStatusText != null)
             {
-                _messageText.text = $"Message: {_lastMessage}";
+                if (_isTouching)
+                {
+                    _hudStatusText.text = "Dragging...";
+                    _hudStatusText.color = new Color(0.3f, 0.8f, 1f);
+                }
+                else if (_isDecaying)
+                {
+                    _hudStatusText.text = $"Decaying → {_targetSpeed:F0}°";
+                    _hudStatusText.color = new Color(1f, 0.6f, 0.3f);
+                }
+                else
+                {
+                    _hudStatusText.text = _lastMessage;
+                    _hudStatusText.color = _lastDirection.Contains("FLUTTER") ? _fromFlutterColor : 
+                                          _lastDirection.Contains("UNITY") ? _toFlutterColor : 
+                                          new Color(0.8f, 0.8f, 0.8f);
+                }
             }
             
-            if (_directionText != null)
+            // Update touch indicator
+            if (_touchIndicator != null)
             {
-                _directionText.text = $"Direction: {_lastDirection}";
+                if (_isTouching)
+                {
+                    _touchIndicator.color = new Color(0.3f, 0.8f, 1f, 0.8f);
+                }
+                else if (_isDecaying)
+                {
+                    float pulse = (Mathf.Sin(Time.time * 4f) + 1f) * 0.3f + 0.2f;
+                    _touchIndicator.color = new Color(1f, 0.6f, 0.3f, pulse);
+                }
+                else
+                {
+                    _touchIndicator.color = new Color(0.5f, 0.5f, 0.5f, 0.3f);
+                }
             }
         }
 
@@ -236,32 +529,34 @@ namespace GameFrameworkTemplate
         #region Flutter Message Handlers
 
         /// <summary>
-        /// Set the rotation speed of the cube.
+        /// Set the target rotation speed (from Flutter slider).
         /// </summary>
         [FlutterMethod("setSpeed")]
-        private void SetSpeed(string data)
+        public void SetSpeed(string data)
         {
             try
             {
                 float speed = float.Parse(data);
-                _rotationSpeed = Mathf.Clamp(speed, -360f, 360f);
-                _lastMessage = $"Speed changed to {_rotationSpeed:F0}°/s";
-                _lastDirection = "← FROM FLUTTER";
-                _messageCount++;
+                _targetSpeed = Mathf.Clamp(speed, -360f, 360f);
                 
-                if (_directionText != null)
+                // If not currently affected by touch, apply immediately
+                if (!_isTouching && !_isDecaying)
                 {
-                    _directionText.color = _fromFlutterColor;
+                    _currentSpeed = _targetSpeed;
                 }
+                
+                _lastMessage = $"Target: {_targetSpeed:F0}°/s";
+                _lastDirection = "← FLUTTER";
+                _messageCount++;
                 
                 // Send acknowledgment
                 SendToFlutter("onSpeedChanged", new SpeedData
                 {
-                    speed = _rotationSpeed,
-                    rpm = (_rotationSpeed / 360f) * 60f
+                    speed = _currentSpeed,
+                    rpm = (_currentSpeed / 360f) * 60f
                 });
                 
-                Log($"Speed set to: {_rotationSpeed}");
+                Log($"Target speed set to: {_targetSpeed}");
             }
             catch (Exception e)
             {
@@ -273,20 +568,15 @@ namespace GameFrameworkTemplate
         /// Set the rotation axis.
         /// </summary>
         [FlutterMethod("setAxis")]
-        private void SetAxis(string data)
+        public void SetAxis(string data)
         {
             var axisData = FlutterSerialization.Deserialize<AxisData>(data);
             if (axisData != null)
             {
                 _rotationAxis = new Vector3(axisData.x, axisData.y, axisData.z).normalized;
-                _lastMessage = $"Axis: ({axisData.x:F1}, {axisData.y:F1}, {axisData.z:F1})";
-                _lastDirection = "← FROM FLUTTER";
+                _lastMessage = $"Axis: ({axisData.x:F0},{axisData.y:F0},{axisData.z:F0})";
+                _lastDirection = "← FLUTTER";
                 _messageCount++;
-                
-                if (_directionText != null)
-                {
-                    _directionText.color = _fromFlutterColor;
-                }
                 
                 Log($"Rotation axis set to: {_rotationAxis}");
             }
@@ -296,7 +586,7 @@ namespace GameFrameworkTemplate
         /// Set the cube color.
         /// </summary>
         [FlutterMethod("setColor")]
-        private void SetColor(string data)
+        public void SetColor(string data)
         {
             var colorData = FlutterSerialization.Deserialize<ColorData>(data);
             if (colorData != null && _cube != null)
@@ -306,14 +596,9 @@ namespace GameFrameworkTemplate
                 {
                     Color newColor = new Color(colorData.r, colorData.g, colorData.b, colorData.a);
                     renderer.material.color = newColor;
-                    _lastMessage = $"Color changed";
-                    _lastDirection = "← FROM FLUTTER";
+                    _lastMessage = "Color changed";
+                    _lastDirection = "← FLUTTER";
                     _messageCount++;
-                    
-                    if (_directionText != null)
-                    {
-                        _directionText.color = _fromFlutterColor;
-                    }
                     
                     Log($"Cube color set to: {newColor}");
                 }
@@ -324,10 +609,12 @@ namespace GameFrameworkTemplate
         /// Reset the cube to default state.
         /// </summary>
         [FlutterMethod("reset")]
-        private void Reset(string data)
+        public void Reset(string data)
         {
-            _rotationSpeed = initialSpeed;
+            _targetSpeed = initialSpeed;
+            _currentSpeed = initialSpeed;
             _rotationAxis = Vector3.up;
+            _isDecaying = false;
             
             if (_cube != null)
             {
@@ -339,16 +626,10 @@ namespace GameFrameworkTemplate
                 }
             }
             
-            _lastMessage = "Reset to defaults";
-            _lastDirection = "← FROM FLUTTER";
+            _lastMessage = "Reset";
+            _lastDirection = "← FLUTTER";
             _messageCount++;
             
-            if (_directionText != null)
-            {
-                _directionText.color = _fromFlutterColor;
-            }
-            
-            // Notify Flutter
             SendToFlutter("onReset", new ResetData { success = true });
             
             Log("Demo reset");
@@ -358,12 +639,13 @@ namespace GameFrameworkTemplate
         /// Get current cube state.
         /// </summary>
         [FlutterMethod("getState")]
-        private void GetState(string data)
+        public void GetState(string data)
         {
             var state = new CubeState
             {
-                speed = _rotationSpeed,
-                rpm = (_rotationSpeed / 360f) * 60f,
+                speed = _currentSpeed,
+                targetSpeed = _targetSpeed,
+                rpm = (_currentSpeed / 360f) * 60f,
                 axis = new AxisData { x = _rotationAxis.x, y = _rotationAxis.y, z = _rotationAxis.z },
                 rotation = new Vector3Data
                 {
@@ -371,18 +653,14 @@ namespace GameFrameworkTemplate
                     y = _cube.transform.eulerAngles.y,
                     z = _cube.transform.eulerAngles.z
                 },
-                messageCount = _messageCount
+                messageCount = _messageCount,
+                isDecaying = _isDecaying
             };
             
             SendToFlutter("onState", state);
             
             _lastMessage = "State sent";
-            _lastDirection = "→ TO FLUTTER";
-            
-            if (_directionText != null)
-            {
-                _directionText.color = _toFlutterColor;
-            }
+            _lastDirection = "→ FLUTTER";
             
             Log("State sent to Flutter");
         }
@@ -396,20 +674,15 @@ namespace GameFrameworkTemplate
             SendToFlutter("onReady", new ReadyData
             {
                 success = true,
-                initialSpeed = _rotationSpeed,
+                initialSpeed = _targetSpeed,
                 initialAxisX = _rotationAxis.x,
                 initialAxisY = _rotationAxis.y,
                 initialAxisZ = _rotationAxis.z,
-                message = "Unity cube demo ready!"
+                message = "Unity cube demo ready! Swipe to spin!"
             });
             
-            _lastMessage = "Demo initialized";
-            _lastDirection = "→ TO FLUTTER";
-            
-            if (_directionText != null)
-            {
-                _directionText.color = _toFlutterColor;
-            }
+            _lastMessage = "Ready";
+            _lastDirection = "→ FLUTTER";
             
             Log("Ready notification sent to Flutter");
         }
@@ -436,6 +709,15 @@ namespace GameFrameworkTemplate
         {
             public float speed;
             public float rpm;
+        }
+
+        [Serializable]
+        public class CurrentSpeedData
+        {
+            public float speed;
+            public float rpm;
+            public float targetSpeed;
+            public bool isTouch;
         }
 
         [Serializable]
@@ -467,10 +749,12 @@ namespace GameFrameworkTemplate
         public class CubeState
         {
             public float speed;
+            public float targetSpeed;
             public float rpm;
             public AxisData axis;
             public Vector3Data rotation;
             public int messageCount;
+            public bool isDecaying;
         }
 
         [Serializable]

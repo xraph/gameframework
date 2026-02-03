@@ -230,46 +230,82 @@ namespace Xraph.GameFramework.Unity
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        // Cached reference to FlutterBridgeRegistry class
+        private static AndroidJavaClass _registryClass = null;
+        private static bool _registryClassLoadAttempted = false;
+        
         /// <summary>
         /// Android-specific method to send messages to Flutter
+        /// Uses FlutterBridgeRegistry singleton which is accessible via JNI
         /// </summary>
         private static void SendToFlutterAndroid(string target, string method, string data)
         {
+            Debug.Log($"NativeAPI Android: Sending - Target: {target}, Method: {method}");
+            
             try
             {
-                using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                AndroidJavaClass registry = GetFlutterBridgeRegistryClass();
+                
+                if (registry == null)
                 {
-                    using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                    {
-                        currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
-                        {
-                            try
-                            {
-                                // Try to get the UnityEngineController from the activity
-                                using (AndroidJavaObject controller = currentActivity.Call<AndroidJavaObject>("getUnityEngineController"))
-                                {
-                                    if (controller != null)
-                                    {
-                                        controller.Call("onUnityMessage", target, method, data);
-                                    }
-                                    else
-                                    {
-                                        Debug.LogWarning("NativeAPI: UnityEngineController not found");
-                                    }
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                Debug.LogError($"NativeAPI Android: Error sending message: {e.Message}");
-                            }
-                        }));
-                    }
+                    Debug.LogError("NativeAPI Android: Cannot find FlutterBridgeRegistry class!");
+                    return;
+                }
+                
+                bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
+                if (success)
+                {
+                    Debug.Log("NativeAPI Android: Message sent successfully!");
+                }
+                else
+                {
+                    Debug.LogWarning("NativeAPI Android: sendMessageToFlutter returned false - controller may not be registered");
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"NativeAPI Android: Failed to send message: {e.Message}\n{e.StackTrace}");
+                Debug.LogError($"NativeAPI Android: Exception sending message: {e.Message}");
+                Debug.LogError($"NativeAPI Android: StackTrace: {e.StackTrace}");
             }
+        }
+        
+        /// <summary>
+        /// Get the FlutterBridgeRegistry class with caching
+        /// </summary>
+        private static AndroidJavaClass GetFlutterBridgeRegistryClass()
+        {
+            if (_registryClass != null)
+            {
+                return _registryClass;
+            }
+            
+            if (_registryClassLoadAttempted)
+            {
+                return null;
+            }
+            
+            _registryClassLoadAttempted = true;
+            string className = "com.xraph.gameframework.unity.FlutterBridgeRegistry";
+            
+            // Try direct class loading
+            try
+            {
+                Debug.Log("NativeAPI Android: Trying direct class loading...");
+                _registryClass = new AndroidJavaClass(className);
+                
+                // Verify it works
+                _registryClass.CallStatic<bool>("isReady");
+                Debug.Log("NativeAPI Android: Direct class loading succeeded!");
+                return _registryClass;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"NativeAPI Android: Direct loading failed: {e.Message}");
+                _registryClass = null;
+            }
+            
+            Debug.LogError("NativeAPI Android: Failed to load FlutterBridgeRegistry class!");
+            return null;
         }
 #endif
 

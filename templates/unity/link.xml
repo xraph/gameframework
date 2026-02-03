@@ -1,0 +1,48 @@
+<linker>
+  <!-- 
+    IL2CPP Code Preservation for Game Framework
+    
+    This file tells IL2CPP to preserve code that uses reflection,
+    including FlutterMethod attributes and message routing.
+    
+    IMPORTANT: This file must be in your Unity project's Assets/ folder.
+  -->
+  
+  <!-- Preserve all Game Framework Unity types -->
+  <assembly fullname="Assembly-CSharp">
+    <!-- Preserve the entire Xraph.GameFramework.Unity namespace -->
+    <type fullname="Xraph.GameFramework.Unity.*" preserve="all"/>
+    
+    <!-- Preserve GameFrameworkTemplate namespace (demo scripts) -->
+    <type fullname="GameFrameworkTemplate.*" preserve="all"/>
+    
+    <!-- Specifically preserve GameFrameworkDemo and all its methods -->
+    <type fullname="GameFrameworkTemplate.GameFrameworkDemo" preserve="all">
+      <method name="*" />
+    </type>
+    
+    <!-- Preserve FlutterMethodAttribute (needed for reflection) -->
+    <type fullname="Xraph.GameFramework.Unity.FlutterMethodAttribute" preserve="all"/>
+    
+    <!-- Preserve MessageRouter (uses reflection to find methods) -->
+    <type fullname="Xraph.GameFramework.Unity.MessageRouter" preserve="all">
+      <method name="*" />
+    </type>
+    
+    <!-- Preserve FlutterMonoBehaviour base class -->
+    <type fullname="Xraph.GameFramework.Unity.FlutterMonoBehaviour" preserve="all">
+      <method name="*" />
+    </type>
+    
+    <!-- Preserve FlutterBridge -->
+    <type fullname="Xraph.GameFramework.Unity.FlutterBridge" preserve="all"/>
+    
+    <!-- Preserve GameFrameworkBootstrapper -->
+    <type fullname="Xraph.GameFramework.Unity.GameFrameworkBootstrapper" preserve="all"/>
+  </assembly>
+  
+  <!-- Preserve Unity JsonUtility serialization -->
+  <assembly fullname="UnityEngine.CoreModule">
+    <type fullname="UnityEngine.JsonUtility" preserve="all"/>
+  </assembly>
+</linker>

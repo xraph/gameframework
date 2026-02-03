@@ -81,6 +81,10 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     private let channel: FlutterMethodChannel
     private let eventChannel: FlutterEventChannel
     private var eventSink: FlutterEventSink?
+    
+    // Event queue for events sent before Flutter subscribes
+    private var pendingEvents: [[String: Any]] = []
+    private let eventQueueLock = NSLock()
 
     private let containerView: GameEngineContainerView
     private var engineView: UIView?
@@ -253,6 +257,20 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     public func onListen(withArguments arguments: Any?,
                   eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         self.eventSink = events
+        
+        // Flush any pending events that were sent before Flutter subscribed
+        eventQueueLock.lock()
+        let queuedEvents = pendingEvents
+        pendingEvents.removeAll()
+        eventQueueLock.unlock()
+        
+        if !queuedEvents.isEmpty {
+            NSLog("GameEngineController: Flushing \(queuedEvents.count) pending events to Flutter")
+            for event in queuedEvents {
+                events(event)
+            }
+        }
+        
         return nil
     }
 
@@ -264,12 +282,34 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     // MARK: - Utility Methods
 
     /// Send an event to Flutter
+    /// Events sent before Flutter subscribes are queued and flushed when subscription starts
     public func sendEvent(name: String, data: Any?) {
+        let event: [String: Any] = [
+            "event": name,
+            "data": data ?? NSNull()
+        ]
+        
         DispatchQueue.main.async { [weak self] in
-            self?.eventSink?([
-                "event": name,
-                "data": data ?? NSNull()
-            ])
+            guard let self = self else { return }
+            
+            if let sink = self.eventSink {
+                // Flutter is subscribed, send directly
+                sink(event)
+            } else {
+                // Flutter not subscribed yet, queue the event
+                self.eventQueueLock.lock()
+                self.pendingEvents.append(event)
+                self.eventQueueLock.unlock()
+                NSLog("GameEngineController: Queued event '\(name)' (Flutter not subscribed yet)")
+                
+                // Limit queue size to prevent memory issues
+                self.eventQueueLock.lock()
+                if self.pendingEvents.count > 50 {
+                    NSLog("GameEngineController: Event queue overflow, dropping oldest event")
+                    self.pendingEvents.removeFirst()
+                }
+                self.eventQueueLock.unlock()
+            }
         }
     }
 

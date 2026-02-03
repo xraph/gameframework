@@ -4,38 +4,68 @@ import UnityFramework
 /**
  * C Bridge functions for Unity-Flutter communication
  * 
- * These functions are called from Unity's C# code (NativeAPI.cs) via [DllImport("__Internal")]
+ * These functions are called from Unity's C# code via [DllImport("__Internal")]
  * They provide the bridge between Unity's C# and the Swift UnityEngineController.
+ * 
+ * IMPORTANT: These @_cdecl functions are exported from the Flutter plugin and are
+ * available to Unity's DllImport because they're linked into the main app binary.
+ * This is the primary mechanism for Unity→Flutter messaging on iOS.
  * 
  * Pattern mirrors Android's approach:
  * - Android uses Java reflection to call controller methods
  * - iOS uses C bridge functions with @_cdecl to call controller methods
  * 
  * All bridge functions follow the same pattern:
- * 1. Get the shared registry
- * 2. Find the UnityEngineController for the Unity view
- * 3. Call the appropriate method on the controller
+ * 1. Get the active UnityEngineController
+ * 2. Call the appropriate method on the controller
  */
 
 /// Get the Unity controller from the registry
 /// This searches for an active UnityEngineController instance
 private func getUnityController() -> UnityEngineController? {
-    // Import is at top, but we need to access GameEngineRegistry
-    // GameEngineRegistry.shared would work if it's accessible
-    // For now, we'll use a simpler approach via NotificationCenter
     return UnityEngineController.activeController
 }
 
 // MARK: - Unity to Flutter Bridge Functions
 
 /**
- * Called from Unity to send a structured message to Flutter
- * Matches Android's SendToFlutterAndroid(target, method, data)
+ * Called from Unity's FlutterBridge.cs to send a structured message to Flutter
+ * This is the PRIMARY messaging function - handles target, method, and data separately
+ * 
+ * Unity C#: [DllImport("__Internal")] extern void SendMessageToFlutter(string target, string method, string data)
+ */
+@_cdecl("SendMessageToFlutter")
+public func SendMessageToFlutter(
+    _ targetPtr: UnsafePointer<CChar>?,
+    _ methodPtr: UnsafePointer<CChar>?,
+    _ dataPtr: UnsafePointer<CChar>?
+) {
+    let target = targetPtr.map { String(cString: $0) } ?? ""
+    let method = methodPtr.map { String(cString: $0) } ?? ""
+    let data = dataPtr.map { String(cString: $0) } ?? ""
+    
+    NSLog("✅ UnityBridge: SendMessageToFlutter called - \(target).\(method)")
+    
+    if let controller = getUnityController() {
+        controller.onUnityMessage(target: target, method: method, data: data)
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller - message dropped!")
+        NSLog("   Target: \(target), Method: \(method)")
+    }
+}
+
+/**
+ * Called from Unity's NativeAPI.cs to send a simple message to Flutter
+ * This is a secondary messaging function that takes a single JSON string
+ * 
+ * Unity C#: [DllImport("__Internal")] extern void _sendMessageToFlutter(string message)
  */
 @_cdecl("_sendMessageToFlutter")
-public func sendMessageToFlutter(_ messagePtr: UnsafePointer<CChar>?) {
+public func _sendMessageToFlutter(_ messagePtr: UnsafePointer<CChar>?) {
     guard let messagePtr = messagePtr else { return }
     let message = String(cString: messagePtr)
+    
+    NSLog("✅ UnityBridge: _sendMessageToFlutter called")
     
     // Parse the JSON message to extract target, method, data
     // Or call controller with raw message
@@ -51,54 +81,69 @@ public func sendMessageToFlutter(_ messagePtr: UnsafePointer<CChar>?) {
             // Fallback: send as raw message
             controller.onUnityMessage(target: "Unity", method: "onMessage", data: message)
         }
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller for _sendMessageToFlutter")
     }
 }
 
 /**
  * Called from Unity to notify Flutter that Unity is ready
- * Matches Android's SendToFlutterAndroid("Unity", "onReady", "")
+ * Unity C#: [DllImport("__Internal")] extern void _notifyUnityReady()
  */
 @_cdecl("_notifyUnityReady")
-public func notifyUnityReady() {
+public func _notifyUnityReady() {
+    NSLog("✅ UnityBridge: _notifyUnityReady called")
     if let controller = getUnityController() {
-        controller.onUnityMessage(target: "Unity", method: "onReady", data: "")
+        controller.onUnityMessage(target: "Unity", method: "onReady", data: "true")
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller for _notifyUnityReady")
     }
 }
 
 /**
  * Called from Unity to show the Flutter host window
- * Matches Android's SendToFlutterAndroid("Unity", "showHostWindow", "")
+ * Unity C#: [DllImport("__Internal")] extern void _showHostMainWindow()
  */
 @_cdecl("_showHostMainWindow")
-public func showHostMainWindow() {
+public func _showHostMainWindow() {
+    NSLog("✅ UnityBridge: _showHostMainWindow called")
     if let controller = getUnityController() {
         controller.onUnityMessage(target: "Unity", method: "showHostWindow", data: "")
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller for _showHostMainWindow")
     }
 }
 
 /**
  * Called from Unity to unload Unity from memory
- * Matches Android's SendToFlutterAndroid("Unity", "unload", "")
+ * Unity C#: [DllImport("__Internal")] extern void _unloadUnity()
  */
 @_cdecl("_unloadUnity")
-public func unloadUnity() {
+public func _unloadUnity() {
+    NSLog("✅ UnityBridge: _unloadUnity called")
     if let controller = getUnityController() {
         controller.onUnityMessage(target: "Unity", method: "unload", data: "")
         controller.destroyEngine()
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller for _unloadUnity")
     }
 }
 
 /**
  * Called from Unity to quit Unity application
- * Matches Android's SendToFlutterAndroid("Unity", "quit", "")
+ * Unity C#: [DllImport("__Internal")] extern void _quitUnity()
  */
 @_cdecl("_quitUnity")
-public func quitUnity() {
+public func _quitUnity() {
+    NSLog("✅ UnityBridge: _quitUnity called")
     if let controller = getUnityController() {
         controller.onUnityMessage(target: "Unity", method: "quit", data: "")
         controller.destroyEngine()
+    } else {
+        NSLog("❌ UnityBridge ERROR: No active controller for _quitUnity")
     }
 }
 
-// Note: Active controller tracking is now in UnityEngineController.swift
+// Note: Active controller tracking is in UnityEngineController.swift
+// The activeController property is set when createEngine() calls registerAsActive()
 

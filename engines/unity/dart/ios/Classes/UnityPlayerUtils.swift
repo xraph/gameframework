@@ -91,13 +91,115 @@ private var appLaunchOpts: [UIApplication.LaunchOptionsKey: Any]? = nil
             window.windowLevel = UIWindow.Level(UIWindow.Level.normal.rawValue - 1)
         }
         
+        // Configure gesture handling to prevent "System gesture gate timed out" errors
+        // This happens when iOS system gestures conflict with Unity's touch handling
+        configureGestureHandling(framework: framework)
+        
         NSLog("UnityPlayerUtils: Unity initialized and running embedded")
         return true
+    }
+    
+    /// Configure gesture handling to prevent "System gesture gate timed out" errors
+    /// This issue occurs when iOS system edge gestures conflict with Unity's touch handling
+    private func configureGestureHandling(framework: UnityFramework) {
+        guard let unityAppController = framework.appController() else {
+            NSLog("UnityPlayerUtils: Cannot configure gestures - no app controller")
+            return
+        }
+        
+        // Get Unity's root view controller
+        guard let rootVC = unityAppController.rootViewController else {
+            NSLog("UnityPlayerUtils: Cannot configure gestures - no root view controller")
+            return
+        }
+        
+        // Swizzle the preferredScreenEdgesDeferringSystemGestures method to defer system gestures
+        // This tells iOS to prioritize app gestures over system edge gestures
+        swizzleScreenEdgesDeferring(for: type(of: rootVC))
+        
+        // Also configure the Unity view's gesture recognizers
+        if let unityView = unityAppController.rootView {
+            configureUnityViewGestures(unityView)
+        }
+        
+        // Force the view controller to re-query gesture preferences
+        rootVC.setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+        
+        NSLog("UnityPlayerUtils: Gesture handling configured to prevent timeouts")
+    }
+    
+    /// Configure Unity view gesture recognizers to reduce conflicts
+    private func configureUnityViewGestures(_ view: UIView) {
+        // Cancel touches in view should be NO to allow gestures to pass through properly
+        for gestureRecognizer in view.gestureRecognizers ?? [] {
+            gestureRecognizer.cancelsTouchesInView = false
+            gestureRecognizer.delaysTouchesBegan = false
+            gestureRecognizer.delaysTouchesEnded = false
+        }
+        
+        // Recursively configure subviews
+        for subview in view.subviews {
+            configureUnityViewGestures(subview)
+        }
+    }
+    
+    /// Swizzle preferredScreenEdgesDeferringSystemGestures to return .all
+    /// This defers system edge gestures, giving the app priority
+    private var hasSwizzled = false
+    private func swizzleScreenEdgesDeferring(for viewControllerClass: AnyClass) {
+        guard !hasSwizzled else { return }
+        hasSwizzled = true
+        
+        let originalSelector = #selector(getter: UIViewController.preferredScreenEdgesDeferringSystemGestures)
+        let swizzledSelector = #selector(UnityPlayerUtils.swizzled_preferredScreenEdgesDeferringSystemGestures)
+        
+        guard let originalMethod = class_getInstanceMethod(viewControllerClass, originalSelector),
+              let swizzledMethod = class_getInstanceMethod(UnityPlayerUtils.self, swizzledSelector) else {
+            NSLog("UnityPlayerUtils: Failed to swizzle preferredScreenEdgesDeferringSystemGestures")
+            return
+        }
+        
+        // Add the swizzled method to the view controller class
+        let didAddMethod = class_addMethod(
+            viewControllerClass,
+            swizzledSelector,
+            method_getImplementation(swizzledMethod),
+            method_getTypeEncoding(swizzledMethod)
+        )
+        
+        if didAddMethod {
+            // Replace the original with our implementation
+            class_replaceMethod(
+                viewControllerClass,
+                originalSelector,
+                method_getImplementation(swizzledMethod),
+                method_getTypeEncoding(swizzledMethod)
+            )
+        } else {
+            method_exchangeImplementations(originalMethod, swizzledMethod)
+        }
+        
+        NSLog("UnityPlayerUtils: Swizzled preferredScreenEdgesDeferringSystemGestures to defer all edges")
+    }
+    
+    /// Swizzled implementation that defers system gestures on all edges
+    @objc func swizzled_preferredScreenEdgesDeferringSystemGestures() -> UIRectEdge {
+        return .all
     }
     
     /// Check if Unity integration options have been set
     @objc public func isIntegrationInitialized() -> Bool {
         return gArgv != nil
+    }
+    
+    /// Public method to reconfigure gesture handling
+    /// Call this if you experience gesture timeouts after Unity view changes
+    @objc public func reconfigureGestureHandling() {
+        guard let framework = unityFramework else {
+            NSLog("UnityPlayerUtils: Cannot reconfigure gestures - Unity not loaded")
+            return
+        }
+        configureGestureHandling(framework: framework)
     }
     
     // MARK: - Unity Framework Management

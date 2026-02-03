@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -207,6 +209,67 @@ namespace Xraph.GameFramework.Unity
             {
                 targetObject.SendMessage(method, data, SendMessageOptions.DontRequireReceiver);
             }
+            else
+            {
+                // Provide helpful debugging information
+                LogTargetNotFoundError(target, method);
+            }
+        }
+
+        /// <summary>
+        /// Log a helpful error message when target GameObject is not found.
+        /// Includes suggestions for fixing the issue.
+        /// </summary>
+        private void LogTargetNotFoundError(string target, string method)
+        {
+            var message = new System.Text.StringBuilder();
+            message.AppendLine($"[FlutterBridge] GameObject '{target}' not found for method '{method}'!");
+            message.AppendLine();
+            message.AppendLine("Fix options:");
+            message.AppendLine($"  1. Create a GameObject named '{target}' in your Unity scene");
+            message.AppendLine($"  2. Attach a FlutterMonoBehaviour script with TargetName = \"{target}\"");
+            message.AppendLine($"  3. Ensure the GameObject is active when Unity starts");
+            message.AppendLine($"  4. Check that MessageRouter is initialized before messages are sent");
+            message.AppendLine($"  5. Add GameFrameworkBootstrapper to your scene for auto-creation");
+            
+            // Attempt to find by type name
+            var allMonoBehaviours = FindObjectsOfType<MonoBehaviour>();
+            var suggestions = allMonoBehaviours.Where(o => o.GetType().Name == target).ToList();
+            
+            if (suggestions.Any())
+            {
+                message.AppendLine();
+                message.AppendLine($"Found {suggestions.Count} GameObject(s) with '{target}' script attached:");
+                foreach (var suggestion in suggestions)
+                {
+                    message.AppendLine($"  - GameObject '{suggestion.gameObject.name}' (consider renaming to '{target}')");
+                }
+                message.AppendLine();
+                message.AppendLine("The script exists but the GameObject name doesn't match the target.");
+                message.AppendLine("Either rename the GameObject or use MessageRouter for automatic routing.");
+            }
+            else
+            {
+                // Look for any FlutterMonoBehaviour
+                var flutterBehaviours = allMonoBehaviours.OfType<FlutterMonoBehaviour>().ToList();
+                if (flutterBehaviours.Any())
+                {
+                    message.AppendLine();
+                    message.AppendLine("FlutterMonoBehaviour instances in scene:");
+                    foreach (var fb in flutterBehaviours)
+                    {
+                        message.AppendLine($"  - {fb.GetType().Name} on GameObject '{fb.gameObject.name}'");
+                    }
+                }
+                else
+                {
+                    message.AppendLine();
+                    message.AppendLine("No FlutterMonoBehaviour instances found in scene.");
+                    message.AppendLine("Make sure you have added the required script to a GameObject.");
+                }
+            }
+            
+            Debug.LogError(message.ToString());
         }
 
         /// <summary>
@@ -270,34 +333,122 @@ namespace Xraph.GameFramework.Unity
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        // Cached references to avoid repeated JNI lookups
+        private static AndroidJavaClass _flutterBridgeRegistryClass = null;
+        private static bool _registryClassLoadAttempted = false;
+        
+        /// <summary>
+        /// Send message to Flutter on Android using FlutterBridgeRegistry
+        /// The registry is a Kotlin singleton accessible via JNI
+        /// 
+        /// Uses Activity's classloader to find Flutter plugin classes,
+        /// since Unity's default classloader may not have access to them.
+        /// </summary>
         private void SendToFlutterAndroid(string target, string method, string data)
         {
-            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            Debug.Log($"FlutterBridge Android: Sending - Target: {target}, Method: {method}");
+            
+            try
             {
-                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                // Try to get or load the FlutterBridgeRegistry class
+                AndroidJavaClass registry = GetFlutterBridgeRegistryClass();
+                
+                if (registry == null)
                 {
-                    currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
-                    {
-                        try
-                        {
-                            // Get the UnityEngineController instance
-                            AndroidJavaObject controller = currentActivity.Get<AndroidJavaObject>("unityEngineController");
-                            if (controller != null)
-                            {
-                                controller.Call("onUnityMessage", target, method, data);
-                            }
-                            else
-                            {
-                                Debug.LogWarning("FlutterBridge: UnityEngineController not found on Android activity");
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"FlutterBridge Android: {e.Message}");
-                        }
-                    }));
+                    Debug.LogError("FlutterBridge Android: Cannot find FlutterBridgeRegistry class!");
+                    return;
+                }
+                
+                bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
+                if (success)
+                {
+                    Debug.Log($"FlutterBridge Android: Message sent successfully!");
+                }
+                else
+                {
+                    Debug.LogWarning("FlutterBridge Android: sendMessageToFlutter returned false - controller may not be registered");
                 }
             }
+            catch (Exception e)
+            {
+                Debug.LogError($"FlutterBridge Android: Exception sending message: {e.Message}");
+                Debug.LogError($"FlutterBridge Android: StackTrace: {e.StackTrace}");
+            }
+        }
+        
+        /// <summary>
+        /// Get the FlutterBridgeRegistry class, trying multiple classloaders if needed
+        /// </summary>
+        private AndroidJavaClass GetFlutterBridgeRegistryClass()
+        {
+            // Return cached class if available
+            if (_flutterBridgeRegistryClass != null)
+            {
+                return _flutterBridgeRegistryClass;
+            }
+            
+            // If we already tried and failed, don't retry
+            if (_registryClassLoadAttempted)
+            {
+                return null;
+            }
+            
+            _registryClassLoadAttempted = true;
+            string className = "com.xraph.gameframework.unity.FlutterBridgeRegistry";
+            
+            // Method 1: Try direct class loading (works if classloaders are unified)
+            try
+            {
+                Debug.Log("FlutterBridge Android: Trying direct class loading...");
+                _flutterBridgeRegistryClass = new AndroidJavaClass(className);
+                
+                // Test that it works by calling isReady
+                _flutterBridgeRegistryClass.CallStatic<bool>("isReady");
+                Debug.Log("FlutterBridge Android: Direct class loading succeeded!");
+                return _flutterBridgeRegistryClass;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"FlutterBridge Android: Direct loading failed: {e.Message}");
+                _flutterBridgeRegistryClass = null;
+            }
+            
+            // Method 2: Try loading via Activity's classloader
+            try
+            {
+                Debug.Log("FlutterBridge Android: Trying Activity classloader...");
+                using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                {
+                    if (activity != null)
+                    {
+                        using (AndroidJavaObject classLoader = activity.Call<AndroidJavaObject>("getClassLoader"))
+                        {
+                            if (classLoader != null)
+                            {
+                                using (AndroidJavaObject clazz = classLoader.Call<AndroidJavaObject>("loadClass", className))
+                                {
+                                    if (clazz != null)
+                                    {
+                                        // Wrap the loaded class - need to use AndroidJavaObject for this
+                                        // Store reference to the class object
+                                        _flutterBridgeRegistryClass = new AndroidJavaClass(className);
+                                        Debug.Log("FlutterBridge Android: Activity classloader succeeded!");
+                                        return _flutterBridgeRegistryClass;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"FlutterBridge Android: Activity classloader failed: {e.Message}");
+            }
+            
+            Debug.LogError("FlutterBridge Android: All class loading methods failed!");
+            return null;
         }
 #endif
 

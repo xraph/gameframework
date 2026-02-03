@@ -3,15 +3,13 @@ import UIKit
 import UnityFramework
 import gameframework
 
-// MARK: - C Bridge Function Declarations
-// These functions are defined in FlutterBridge.mm (Objective-C)
-// They set the controller reference used by Unity's SendMessageToFlutter
-
-@_silgen_name("SetFlutterBridgeController")
-func SetFlutterBridgeController(_ controller: UnsafeMutableRawPointer?)
-
-@_silgen_name("SetUnityFramework")
-func SetUnityFramework(_ framework: UnsafeMutableRawPointer?)
+// NOTE: Unity→Flutter messaging uses two mechanisms:
+// 1. FlutterBridgeRegistry - Swift class accessible via Objective-C runtime from FlutterBridge.mm
+// 2. UnityBridge.swift @_cdecl functions - backup for Swift-only scenarios
+//
+// FlutterBridgeRegistry is the PRIMARY mechanism because:
+// - Objective-C runtime (NSClassFromString) works reliably across dynamically loaded frameworks
+// - dlsym for C functions in dynamically loaded frameworks is unreliable (symbols may be stripped)
 
 /**
  * Unity-specific implementation of GameEngineController
@@ -20,7 +18,6 @@ func SetUnityFramework(_ framework: UnsafeMutableRawPointer?)
  * between Flutter and Unity on iOS.
  */
 public class UnityEngineController: GameEngineController {
-
     private var unityFramework: UnityFramework?
     private var unityView: UIView?
     private var unityReady = false
@@ -78,10 +75,10 @@ public class UnityEngineController: GameEngineController {
             
             self.unityFramework = unity
             
-            // Register Unity framework with Objective-C bridge for native methods
-            let frameworkPtr = Unmanaged.passUnretained(unity as AnyObject).toOpaque()
-            SetUnityFramework(frameworkPtr)
-            NSLog("UnityEngineController: Unity framework registered with Objective-C bridge")
+            // CRITICAL: Register the Unity framework with the FlutterBridgeRegistry
+            // This allows FlutterBridge.mm to find Unity framework via Objective-C runtime
+            FlutterBridgeRegistry.register(unityFramework: unity)
+            NSLog("UnityEngineController: Registered Unity framework with FlutterBridgeRegistry")
             
             // Register as listener for Unity events
             unity.register(self)
@@ -131,6 +128,16 @@ public class UnityEngineController: GameEngineController {
             
             self.sendEvent(name: "onCreated", data: nil)
             self.sendEvent(name: "onLoaded", data: nil)
+            
+            // Send onReady message so Flutter knows Unity is ready for communication
+            // This is sent from iOS to ensure Flutter gets the ready notification
+            // even if Unity scripts haven't loaded yet or their messages arrive late
+            self.sendEvent(name: "onMessage", data: [
+                "target": "Unity",
+                "method": "onReady",
+                "data": "{\"success\":true,\"message\":\"Unity engine ready\"}"
+            ])
+            NSLog("UnityEngineController: Sent onReady message to Flutter")
             
             // Flush any queued messages now that Flutter is ready
             self.flushMessageQueue()
@@ -190,7 +197,7 @@ public class UnityEngineController: GameEngineController {
     }
 
     public override func destroyEngine() {
-        // Unregister as active controller
+        // Unregister as active controller (this clears activeController and FlutterBridgeRegistry)
         self.unregisterAsActive()
         
         // Reset message queue state
@@ -198,9 +205,6 @@ public class UnityEngineController: GameEngineController {
         messageQueue.removeAll()
         isMessageChannelReady = false
         messageQueueLock.unlock()
-        
-        // Clear Unity framework reference from Objective-C bridge
-        SetUnityFramework(nil)
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -221,13 +225,37 @@ public class UnityEngineController: GameEngineController {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
-            // Send message to Unity using UnitySendMessage
+            // Route ALL messages through FlutterBridge.ReceiveMessage for proper
+            // MessageRouter handling (FlutterMethodAttribute mapping, throttling, etc.)
+            // 
+            // This is critical because:
+            // - Unity's SendMessage is case-sensitive
+            // - Flutter uses camelCase (setColor) but C# uses PascalCase (SetColor)
+            // - FlutterMethodAttribute maps camelCase → PascalCase via MessageRouter
+            // - Direct UnitySendMessage("GameFrameworkDemo", "setColor") would fail
+            //
+            // The JSON format matches FlutterBridge.FlutterMessage class structure
+            let jsonMessage = """
+            {"target":"\(self.escapeJsonString(target))","method":"\(self.escapeJsonString(method))","data":"\(self.escapeJsonString(data))"}
+            """
+            
             self.unityFramework?.sendMessageToGO(
-                withName: target,
-                functionName: method,
-                message: data
+                withName: "FlutterBridge",
+                functionName: "ReceiveMessage",
+                message: jsonMessage
             )
         }
+    }
+    
+    /// Escape special characters for JSON string embedding
+    private func escapeJsonString(_ string: String) -> String {
+        var result = string
+        result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        result = result.replacingOccurrences(of: "\"", with: "\\\"")
+        result = result.replacingOccurrences(of: "\n", with: "\\n")
+        result = result.replacingOccurrences(of: "\r", with: "\\r")
+        result = result.replacingOccurrences(of: "\t", with: "\\t")
+        return result
     }
 
     public override var engineType: String {
@@ -255,13 +283,12 @@ public class UnityEngineController: GameEngineController {
     // MARK: - Unity Lifecycle Callbacks
 
     /**
-     * Called from Unity when a message is sent to Flutter
+     * Called from UnityBridge.swift or FlutterBridge.mm when Unity sends a message to Flutter
      * Messages are queued if the Flutter message channel isn't ready yet
      * 
-     * Note: The Objective-C selector is explicitly defined to match FlutterBridge.mm
+     * @objc is required so this method can be called from FlutterBridge.mm via NSInvocation
      */
-    @objc(onUnityMessageWithTarget:method:data:)
-    public func onUnityMessage(target: String, method: String, data: String) {
+    @objc public func onUnityMessage(target: String, method: String, data: String) {
         messageQueueLock.lock()
         defer { messageQueueLock.unlock() }
         
@@ -384,24 +411,34 @@ public class UnityEngineController: GameEngineController {
     }
     
     /// Register this controller as the active one
-    /// This also registers with the Objective-C bridge for Unity messaging
+    /// This registers with BOTH:
+    /// 1. Swift's activeController (for UnityBridge.swift @_cdecl functions - backup)
+    /// 2. FlutterBridgeRegistry (accessible from FlutterBridge.mm via Objective-C runtime)
+    ///
+    /// FlutterBridgeRegistry is the primary mechanism because:
+    /// - Objective-C runtime works reliably across dynamically loaded frameworks
+    /// - dlsym for C functions may fail if symbols are stripped by IL2CPP
     func registerAsActive() {
         UnityEngineController.activeController = self
         
-        // Register with Objective-C bridge so Unity's SendMessageToFlutter can reach us
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-        SetFlutterBridgeController(selfPtr)
+        // CRITICAL: Register with FlutterBridgeRegistry
+        // FlutterBridge.mm (in UnityFramework) uses NSClassFromString to find this registry
+        // and get the controller reference. This avoids the unreliable dlsym approach.
+        FlutterBridgeRegistry.register(controller: self)
         
-        NSLog("UnityEngineController: Registered controller with Objective-C bridge")
+        NSLog("UnityEngineController: Registered as active controller (Swift + FlutterBridgeRegistry)")
     }
     
     /// Unregister this controller
-    /// This also clears the Objective-C bridge reference
+    /// After this, Unity messages will not be forwarded until a new controller registers
     func unregisterAsActive() {
         if UnityEngineController.activeController === self {
             UnityEngineController.activeController = nil
-            SetFlutterBridgeController(nil)
-            NSLog("UnityEngineController: Unregistered controller from Objective-C bridge")
+            
+            // Unregister from FlutterBridgeRegistry - clears all references
+            FlutterBridgeRegistry.unregisterAll()
+            
+            NSLog("UnityEngineController: Unregistered as active controller")
         }
     }
 }

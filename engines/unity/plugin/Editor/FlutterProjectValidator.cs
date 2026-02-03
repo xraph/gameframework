@@ -111,6 +111,7 @@ namespace Xraph.GameFramework.Unity.Editor
         {
             var activeScene = SceneManager.GetActiveScene();
             var rootObjects = activeScene.GetRootGameObjects();
+            var allMonoBehaviours = Object.FindObjectsOfType<MonoBehaviour>();
 
             // Check for FlutterBridge
             bool hasFlutterBridge = rootObjects.Any(obj => obj.GetComponent<FlutterBridge>() != null);
@@ -120,8 +121,48 @@ namespace Xraph.GameFramework.Unity.Editor
             }
             else
             {
-                AddResult("Scene Setup", "FlutterBridge not found in scene. Add it for Flutter communication",
-                    ValidationType.Error, () => CreateFlutterBridge());
+                AddResult("Scene Setup", "FlutterBridge not found in scene (will auto-create at runtime)",
+                    ValidationType.Info, () => CreateFlutterBridge());
+            }
+
+            // Check for MessageRouter
+            bool hasMessageRouter = Object.FindObjectOfType<MessageRouter>() != null;
+            if (hasMessageRouter)
+            {
+                AddResult("Scene Setup", "MessageRouter found in scene ✓", ValidationType.Success);
+            }
+            else
+            {
+                AddResult("Scene Setup", "MessageRouter not found in scene (will auto-create at runtime)",
+                    ValidationType.Info, () => CreateMessageRouter());
+            }
+
+            // Check for GameFrameworkBootstrapper
+            bool hasBootstrapper = Object.FindObjectOfType<GameFrameworkBootstrapper>() != null;
+            if (hasBootstrapper)
+            {
+                AddResult("Scene Setup", "GameFrameworkBootstrapper found in scene ✓", ValidationType.Success);
+            }
+            else
+            {
+                AddResult("Scene Setup", "GameFrameworkBootstrapper not in scene. Consider adding for auto-creation of targets",
+                    ValidationType.Info, () => CreateBootstrapper());
+            }
+
+            // Check for FlutterMonoBehaviour instances
+            var flutterBehaviours = allMonoBehaviours.OfType<FlutterMonoBehaviour>().ToList();
+            if (flutterBehaviours.Count > 0)
+            {
+                AddResult("Scene Setup", $"Found {flutterBehaviours.Count} FlutterMonoBehaviour instance(s) ✓", ValidationType.Success);
+                foreach (var fb in flutterBehaviours)
+                {
+                    AddResult("Scene Setup", $"  - {fb.GetType().Name} on '{fb.gameObject.name}'", ValidationType.Info);
+                }
+            }
+            else
+            {
+                AddResult("Scene Setup", "No FlutterMonoBehaviour instances found. Messages from Flutter may not be received",
+                    ValidationType.Warning, () => CreateDemoObject());
             }
 
             // Check for FlutterSceneManager
@@ -377,6 +418,64 @@ namespace Xraph.GameFramework.Unity.Editor
             go.AddComponent<FlutterBridge>();
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);
+        }
+
+        private void CreateMessageRouter()
+        {
+            var go = new GameObject("MessageRouter");
+            go.AddComponent<MessageRouter>();
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
+        }
+
+        private void CreateBootstrapper()
+        {
+            var go = new GameObject("[GameFramework Bootstrap]");
+            go.AddComponent<GameFrameworkBootstrapper>();
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
+        }
+
+        private void CreateDemoObject()
+        {
+            // Try to find the GameFrameworkDemo type
+            var demoType = FindType("GameFrameworkDemo");
+            if (demoType != null)
+            {
+                var go = new GameObject("GameFrameworkDemo");
+                go.AddComponent(demoType);
+                Selection.activeGameObject = go;
+                EditorGUIUtility.PingObject(go);
+            }
+            else
+            {
+                Debug.LogWarning("[FlutterValidator] GameFrameworkDemo type not found. " +
+                    "You can add your own FlutterMonoBehaviour script to a GameObject.");
+            }
+        }
+
+        private System.Type FindType(string typeName)
+        {
+            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(typeName);
+                if (type != null) return type;
+
+                type = assembly.GetType($"GameFrameworkTemplate.{typeName}");
+                if (type != null) return type;
+
+                type = assembly.GetType($"Xraph.GameFramework.Unity.{typeName}");
+                if (type != null) return type;
+
+                foreach (var t in assembly.GetTypes())
+                {
+                    if (t.Name == typeName)
+                    {
+                        return t;
+                    }
+                }
+            }
+            return null;
         }
 
         private void CreateFlutterSceneManager()

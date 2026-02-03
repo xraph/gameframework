@@ -273,7 +273,7 @@ class _GameWidgetState extends State<GameWidget> {
           controller: controller as AndroidViewController,
           gestureRecognizers: widget.gestureRecognizers ??
               const <Factory<OneSequenceGestureRecognizer>>{},
-          hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+          hitTestBehavior: PlatformViewHitTestBehavior.opaque,
         );
       },
       onCreatePlatformView: (params) {
@@ -307,7 +307,7 @@ class _GameWidgetState extends State<GameWidget> {
           controller: controller as AndroidViewController,
           gestureRecognizers: widget.gestureRecognizers ??
               const <Factory<OneSequenceGestureRecognizer>>{},
-          hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+          hitTestBehavior: PlatformViewHitTestBehavior.opaque,
         );
       },
       onCreatePlatformView: (params) {

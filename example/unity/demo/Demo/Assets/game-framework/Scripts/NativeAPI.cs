@@ -232,43 +232,72 @@ namespace Xraph.GameFramework.Unity
 #if UNITY_ANDROID && !UNITY_EDITOR
         /// <summary>
         /// Android-specific method to send messages to Flutter
+        /// Uses FlutterBridgeRegistry singleton which is accessible via JNI
         /// </summary>
         private static void SendToFlutterAndroid(string target, string method, string data)
         {
             try
             {
-                using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                // Use FlutterBridgeRegistry to send messages - this is a static singleton
+                // accessible from Unity C# via AndroidJavaClass
+                using (AndroidJavaClass registry = new AndroidJavaClass("com.xraph.gameframework.unity.FlutterBridgeRegistry"))
                 {
-                    using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                    bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
+                    if (!success)
                     {
-                        currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
-                        {
-                            try
-                            {
-                                // Try to get the UnityEngineController from the activity
-                                using (AndroidJavaObject controller = currentActivity.Call<AndroidJavaObject>("getUnityEngineController"))
-                                {
-                                    if (controller != null)
-                                    {
-                                        controller.Call("onUnityMessage", target, method, data);
-                                    }
-                                    else
-                                    {
-                                        Debug.LogWarning("NativeAPI: UnityEngineController not found");
-                                    }
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                Debug.LogError($"NativeAPI Android: Error sending message: {e.Message}");
-                            }
-                        }));
+                        Debug.LogWarning($"NativeAPI: FlutterBridgeRegistry.sendMessageToFlutter returned false - controller not registered");
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"NativeAPI Android: Failed to send message: {e.Message}\n{e.StackTrace}");
+                Debug.LogError($"NativeAPI Android: Failed to send message via FlutterBridgeRegistry: {e.Message}\n{e.StackTrace}");
+                
+                // Fallback: Try the old Activity-based method (for backwards compatibility)
+                try
+                {
+                    SendToFlutterAndroidLegacy(target, method, data);
+                }
+                catch (Exception fallbackError)
+                {
+                    Debug.LogError($"NativeAPI Android: Fallback also failed: {fallbackError.Message}");
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Legacy Android method - tries to get controller from Activity
+        /// This is a fallback that likely won't work, but kept for debugging
+        /// </summary>
+        private static void SendToFlutterAndroidLegacy(string target, string method, string data)
+        {
+            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            {
+                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                {
+                    currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
+                    {
+                        try
+                        {
+                            // This likely won't work - FlutterActivity doesn't have getUnityEngineController()
+                            using (AndroidJavaObject controller = currentActivity.Call<AndroidJavaObject>("getUnityEngineController"))
+                            {
+                                if (controller != null)
+                                {
+                                    controller.Call("onUnityMessage", target, method, data);
+                                }
+                                else
+                                {
+                                    Debug.LogWarning("NativeAPI: UnityEngineController not found on Activity (legacy method)");
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError($"NativeAPI Android Legacy: Error sending message: {e.Message}");
+                        }
+                    }));
+                }
             }
         }
 #endif

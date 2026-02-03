@@ -56,7 +56,7 @@ abstract class GameEngineController(
     private var eventStreamReady = false
 
     init {
-        container = FrameLayout(context)
+        container = createContainer()
         container.setBackgroundColor(Color.TRANSPARENT)
         methodChannel = MethodChannel(
             messenger,
@@ -76,6 +76,14 @@ abstract class GameEngineController(
         
         // NOTE: Event handler will be registered when Flutter explicitly requests it
         // via the 'events#setup' method call. This eliminates race conditions.
+    }
+    
+    /**
+     * Create the container view for the engine.
+     * Subclasses can override this to provide a custom container (e.g., for touch handling).
+     */
+    protected open fun createContainer(): FrameLayout {
+        return FrameLayout(context)
     }
 
     // ===== Abstract Methods (Engine-specific) =====
@@ -308,10 +316,16 @@ abstract class GameEngineController(
      */
     protected fun sendEventToFlutter(event: String, data: Any?) {
         runOnMainThread {
-            eventSink?.success(mapOf(
-                "event" to event,
-                "data" to data
-            ))
+            val sink = eventSink
+            if (sink == null) {
+                Log.w("GameEngineController", "sendEventToFlutter: eventSink is null! Event '$event' dropped.")
+            } else {
+                Log.d("GameEngineController", "sendEventToFlutter: Sending event '$event' to Flutter")
+                sink.success(mapOf(
+                    "event" to event,
+                    "data" to data
+                ))
+            }
         }
     }
 
