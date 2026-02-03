@@ -57,6 +57,91 @@ public:
 	void OnMessageFromFlutter(const FString& Target, const FString& Method, const FString& Data);
 
 	// ============================================================
+	// MARK: - Binary Message Communication
+	// ============================================================
+
+	/**
+	 * Send binary data to Flutter
+	 * @param Target - The target object in Flutter
+	 * @param Method - The method name to call
+	 * @param Data - The binary data to send
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flutter|Binary")
+	void SendBinaryToFlutter(const FString& Target, const FString& Method, const TArray<uint8>& Data);
+
+	/**
+	 * Called when binary data is received from Flutter
+	 * @param Target - The target object in Unreal
+	 * @param Method - The method name to call
+	 * @param Data - The binary data received
+	 * @param Checksum - CRC32 checksum for verification
+	 */
+	void ReceiveBinaryFromFlutter(const FString& Target, const FString& Method, const TArray<uint8>& Data, int32 Checksum);
+
+	/**
+	 * Blueprint event fired when binary data is received from Flutter
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Flutter|Binary")
+	void OnBinaryMessageFromFlutter(const FString& Target, const FString& Method, const TArray<uint8>& Data);
+
+	/**
+	 * Called when a binary chunk header is received (start of chunked transfer)
+	 */
+	void ReceiveBinaryChunkHeader(
+		const FString& Target,
+		const FString& Method,
+		const FString& TransferId,
+		int32 TotalSize,
+		int32 TotalChunks,
+		int32 Checksum
+	);
+
+	/**
+	 * Called when a binary chunk data is received
+	 */
+	void ReceiveBinaryChunkData(
+		const FString& Target,
+		const FString& Method,
+		const FString& TransferId,
+		int32 ChunkIndex,
+		const TArray<uint8>& Data
+	);
+
+	/**
+	 * Called when a binary chunk footer is received (end of chunked transfer)
+	 */
+	void ReceiveBinaryChunkFooter(
+		const FString& Target,
+		const FString& Method,
+		const FString& TransferId,
+		int32 TotalChunks,
+		int32 Checksum
+	);
+
+	/**
+	 * Set the chunk size for binary transfers
+	 */
+	void SetBinaryChunkSize(int32 Size);
+
+	/**
+	 * Get the current chunk size for binary transfers
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flutter|Binary")
+	int32 GetBinaryChunkSize() const;
+
+	/**
+	 * Blueprint event fired when a chunked transfer completes
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Flutter|Binary")
+	void OnChunkedTransferComplete(const FString& TransferId, const TArray<uint8>& Data);
+
+	/**
+	 * Blueprint event fired to report binary transfer progress
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Flutter|Binary")
+	void OnBinaryTransferProgress(const FString& TransferId, int32 CurrentChunk, int32 TotalChunks, float Progress);
+
+	// ============================================================
 	// MARK: - Console Commands
 	// ============================================================
 
@@ -197,6 +282,37 @@ private:
 
 	// Is engine paused?
 	bool bIsPaused;
+
+	// Binary transfer chunk size (default 64KB)
+	int32 BinaryChunkSize;
+
+	// Active chunked transfers
+	struct FChunkedTransfer
+	{
+		FString Target;
+		FString Method;
+		int32 TotalSize;
+		int32 TotalChunks;
+		int32 ExpectedChecksum;
+		TMap<int32, TArray<uint8>> Chunks;
+		int32 ReceivedChunks;
+
+		FChunkedTransfer()
+			: TotalSize(0)
+			, TotalChunks(0)
+			, ExpectedChecksum(0)
+			, ReceivedChunks(0)
+		{}
+	};
+
+	TMap<FString, FChunkedTransfer> ActiveTransfers;
+
+	// Binary helpers
+	int32 CalculateCRC32(const TArray<uint8>& Data) const;
+	bool VerifyChecksum(const TArray<uint8>& Data, int32 ExpectedChecksum) const;
+	TArray<uint8> CompressData(const TArray<uint8>& Data) const;
+	TArray<uint8> DecompressData(const TArray<uint8>& Data) const;
+	void AssembleChunkedTransfer(const FString& TransferId);
 
 	// Platform-specific bridge initialization
 	void InitializePlatformBridge();

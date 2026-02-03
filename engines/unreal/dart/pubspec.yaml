@@ -23,7 +23,8 @@ dependencies:
   flutter:
     sdk: flutter
   # For development, use path:
-  gameframework: 0.0.1
+  gameframework:
+    path: ../../../packages/gameframework
 
 flutter:
   plugin:

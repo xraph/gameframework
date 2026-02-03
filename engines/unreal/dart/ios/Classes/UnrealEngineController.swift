@@ -1,5 +1,6 @@
 import UIKit
 import Flutter
+import zlib
 
 /**
  * Unreal Engine Controller for iOS
@@ -169,6 +170,204 @@ public class UnrealEngineController: NSObject {
         nativeSendMessage(target: target, method: method, data: jsonString)
     }
 
+    // MARK: - Binary Messaging
+
+    /**
+     * Send binary data to Unreal Engine
+     *
+     * @param target Target object in Unreal
+     * @param method Method name to call
+     * @param data Base64 encoded binary data
+     * @param originalSize Original uncompressed size
+     * @param compressedSize Size after compression
+     * @param isCompressed Whether data is compressed
+     * @param checksum CRC32 checksum
+     */
+    public func sendBinaryMessage(
+        target: String,
+        method: String,
+        data: String,
+        originalSize: Int,
+        compressedSize: Int,
+        isCompressed: Bool,
+        checksum: Int
+    ) {
+        if !isReady || isDestroyed {
+            sendError("Engine not ready for binary messages")
+            return
+        }
+
+        guard let decodedData = Data(base64Encoded: data) else {
+            sendError("Failed to decode base64 binary data")
+            return
+        }
+
+        var processedData = decodedData
+        if isCompressed {
+            if let decompressed = decompressGzip(decodedData) {
+                processedData = decompressed
+            }
+        }
+
+        nativeSendBinaryMessage(target: target, method: method, data: processedData, checksum: checksum)
+    }
+
+    /**
+     * Send binary chunk for chunked transfer
+     */
+    public func sendBinaryChunk(
+        target: String,
+        method: String,
+        chunkType: String,
+        transferId: String,
+        chunkIndex: Int?,
+        totalChunks: Int,
+        totalSize: Int?,
+        data: String?,
+        checksum: Int?
+    ) {
+        if !isReady || isDestroyed {
+            sendError("Engine not ready for binary chunks")
+            return
+        }
+
+        switch chunkType {
+        case "header":
+            nativeBinaryChunkHeader(
+                target: target,
+                method: method,
+                transferId: transferId,
+                totalSize: totalSize ?? 0,
+                totalChunks: totalChunks,
+                checksum: checksum ?? 0
+            )
+        case "data":
+            let decodedData = data.flatMap { Data(base64Encoded: $0) } ?? Data()
+            nativeBinaryChunkData(
+                target: target,
+                method: method,
+                transferId: transferId,
+                chunkIndex: chunkIndex ?? 0,
+                data: decodedData
+            )
+        case "footer":
+            nativeBinaryChunkFooter(
+                target: target,
+                method: method,
+                transferId: transferId,
+                totalChunks: totalChunks,
+                checksum: checksum ?? 0
+            )
+        default:
+            sendError("Unknown chunk type: \(chunkType)")
+        }
+    }
+
+    /**
+     * Send compressed string data
+     */
+    public func sendCompressedMessage(
+        target: String,
+        method: String,
+        data: String,
+        originalSize: Int,
+        compressedSize: Int
+    ) {
+        if !isReady || isDestroyed {
+            sendError("Engine not ready for compressed messages")
+            return
+        }
+
+        guard let decodedData = Data(base64Encoded: data),
+              let decompressed = decompressGzip(decodedData),
+              let stringData = String(data: decompressed, encoding: .utf8) else {
+            sendError("Failed to decode compressed message")
+            return
+        }
+
+        nativeSendMessage(target: target, method: method, data: stringData)
+    }
+
+    /**
+     * Set the chunk size for binary transfers
+     */
+    public func setBinaryChunkSize(_ size: Int) {
+        nativeSetBinaryChunkSize(size)
+    }
+
+    // MARK: - Compression Utilities
+
+    private func compressGzip(_ data: Data) -> Data? {
+        guard data.count > 0 else { return nil }
+
+        var stream = z_stream()
+        stream.avail_in = uInt(data.count)
+
+        let compressedCapacity = data.count + 12 // Extra space for gzip header/footer
+        var compressed = Data(count: compressedCapacity)
+
+        let totalOut: Int? = data.withUnsafeBytes { (inputPointer: UnsafeRawBufferPointer) -> Int? in
+            compressed.withUnsafeMutableBytes { (outputPointer: UnsafeMutableRawBufferPointer) -> Int? in
+                stream.next_in = UnsafeMutablePointer<Bytef>(mutating: inputPointer.bindMemory(to: Bytef.self).baseAddress!)
+                stream.next_out = outputPointer.bindMemory(to: Bytef.self).baseAddress!
+                stream.avail_out = uInt(compressedCapacity)
+
+                let initResult = deflateInit2_(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+                guard initResult == Z_OK else { return nil }
+
+                let deflateResult = deflate(&stream, Z_FINISH)
+                guard deflateResult == Z_STREAM_END else {
+                    deflateEnd(&stream)
+                    return nil
+                }
+
+                deflateEnd(&stream)
+                return Int(stream.total_out)
+            }
+        }
+        
+        guard let size = totalOut else { return nil }
+        return compressed.prefix(size)
+    }
+
+    private func decompressGzip(_ data: Data) -> Data? {
+        // Check for GZIP magic number
+        guard data.count >= 2,
+              data[0] == 0x1F,
+              data[1] == 0x8B else {
+            return data // Not compressed
+        }
+
+        var stream = z_stream()
+        stream.avail_in = uInt(data.count)
+
+        let decompressedCapacity = data.count * 4 // Initial estimate
+        var decompressed = Data(count: decompressedCapacity)
+
+        let totalOut: Int? = data.withUnsafeBytes { (inputPointer: UnsafeRawBufferPointer) -> Int? in
+            decompressed.withUnsafeMutableBytes { (outputPointer: UnsafeMutableRawBufferPointer) -> Int? in
+                stream.next_in = UnsafeMutablePointer<Bytef>(mutating: inputPointer.bindMemory(to: Bytef.self).baseAddress!)
+                stream.next_out = outputPointer.bindMemory(to: Bytef.self).baseAddress!
+                stream.avail_out = uInt(decompressedCapacity)
+
+                let initResult = inflateInit2_(&stream, 15 + 32, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+                guard initResult == Z_OK else { return nil }
+
+                let inflateResult = inflate(&stream, Z_FINISH)
+                guard inflateResult == Z_STREAM_END else {
+                    inflateEnd(&stream)
+                    return nil
+                }
+
+                inflateEnd(&stream)
+                return Int(stream.total_out)
+            }
+        }
+        
+        guard let size = totalOut else { return nil }
+        return decompressed.prefix(size)
+    }
+
     // MARK: - Unreal-Specific Methods
 
     /**
@@ -313,6 +512,95 @@ public class UnrealEngineController: NSObject {
         }
     }
 
+    /**
+     * Called from native code when a binary message is received from Unreal
+     */
+    @objc public func onBinaryMessageFromUnreal(
+        target: String,
+        method: String,
+        data: Data,
+        isCompressed: Bool,
+        checksum: Int
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let encodedData = data.base64EncodedString()
+            self.channel.invokeMethod("onBinaryMessage", arguments: [
+                "target": target,
+                "method": method,
+                "data": encodedData,
+                "isCompressed": isCompressed,
+                "checksum": checksum
+            ])
+        }
+    }
+
+    /**
+     * Called from native code when a binary chunk is received from Unreal
+     */
+    public func onBinaryChunkFromUnreal(
+        target: String,
+        method: String,
+        chunkType: String,
+        transferId: String,
+        chunkIndex: Int?,
+        totalChunks: Int,
+        totalSize: Int?,
+        data: Data?,
+        checksum: Int?
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            var arguments: [String: Any] = [
+                "target": target,
+                "method": method,
+                "type": chunkType,
+                "transferId": transferId,
+                "totalChunks": totalChunks
+            ]
+
+            if let chunkIndex = chunkIndex {
+                arguments["chunkIndex"] = chunkIndex
+            }
+            if let totalSize = totalSize {
+                arguments["totalSize"] = totalSize
+            }
+            if let data = data {
+                arguments["data"] = data.base64EncodedString()
+            }
+            if let checksum = checksum {
+                arguments["checksum"] = checksum
+            }
+
+            self.channel.invokeMethod("onBinaryChunk", arguments: arguments)
+        }
+    }
+
+    /**
+     * Called from native code to report binary transfer progress
+     */
+    @objc public func onBinaryProgress(
+        transferId: String,
+        currentChunk: Int,
+        totalChunks: Int,
+        bytesTransferred: Int64,
+        totalBytes: Int64
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            self.channel.invokeMethod("onBinaryProgress", arguments: [
+                "transferId": transferId,
+                "currentChunk": currentChunk,
+                "totalChunks": totalChunks,
+                "bytesTransferred": bytesTransferred,
+                "totalBytes": totalBytes
+            ])
+        }
+    }
+
     // MARK: - Framework Loading
 
     private func loadUnrealFramework() -> UnrealFramework? {
@@ -429,6 +717,86 @@ public class UnrealEngineController: NSObject {
     private func nativeGetQualitySettings() -> [String: Any] {
         return UnrealBridge.shared.getQualitySettings()
     }
+
+    // MARK: - Binary Native Bridge Methods
+
+    /**
+     * Send binary message to Unreal
+     * Implemented in Objective-C++ bridge
+     */
+    private func nativeSendBinaryMessage(target: String, method: String, data: Data, checksum: Int) {
+        UnrealBridge.shared.sendBinaryMessage(target: target, method: method, data: data, checksum: checksum)
+    }
+
+    /**
+     * Send binary chunk header
+     * Implemented in Objective-C++ bridge
+     */
+    private func nativeBinaryChunkHeader(
+        target: String,
+        method: String,
+        transferId: String,
+        totalSize: Int,
+        totalChunks: Int,
+        checksum: Int
+    ) {
+        UnrealBridge.shared.binaryChunkHeader(
+            target: target,
+            method: method,
+            transferId: transferId,
+            totalSize: totalSize,
+            totalChunks: totalChunks,
+            checksum: checksum
+        )
+    }
+
+    /**
+     * Send binary chunk data
+     * Implemented in Objective-C++ bridge
+     */
+    private func nativeBinaryChunkData(
+        target: String,
+        method: String,
+        transferId: String,
+        chunkIndex: Int,
+        data: Data
+    ) {
+        UnrealBridge.shared.binaryChunkData(
+            target: target,
+            method: method,
+            transferId: transferId,
+            chunkIndex: chunkIndex,
+            data: data
+        )
+    }
+
+    /**
+     * Send binary chunk footer
+     * Implemented in Objective-C++ bridge
+     */
+    private func nativeBinaryChunkFooter(
+        target: String,
+        method: String,
+        transferId: String,
+        totalChunks: Int,
+        checksum: Int
+    ) {
+        UnrealBridge.shared.binaryChunkFooter(
+            target: target,
+            method: method,
+            transferId: transferId,
+            totalChunks: totalChunks,
+            checksum: checksum
+        )
+    }
+
+    /**
+     * Set chunk size for binary transfers
+     * Implemented in Objective-C++ bridge
+     */
+    private func nativeSetBinaryChunkSize(_ size: Int) {
+        UnrealBridge.shared.setBinaryChunkSize(size)
+    }
 }
 
 // MARK: - Unreal Framework Wrapper
@@ -515,5 +883,105 @@ private class UnrealFramework {
     // Called from Unreal C++ when level is loaded
     @objc public func notifyLevelLoaded(levelName: String, buildIndex: Int) {
         controller?.onLevelLoaded(levelName: levelName, buildIndex: buildIndex)
+    }
+
+    // MARK: - Binary Messaging Bridge Methods
+
+    @objc public func sendBinaryMessage(target: String, method: String, data: Data, checksum: Int) {
+        // Implementation in UnrealBridge.mm
+    }
+
+    @objc public func binaryChunkHeader(
+        target: String,
+        method: String,
+        transferId: String,
+        totalSize: Int,
+        totalChunks: Int,
+        checksum: Int
+    ) {
+        // Implementation in UnrealBridge.mm
+    }
+
+    @objc public func binaryChunkData(
+        target: String,
+        method: String,
+        transferId: String,
+        chunkIndex: Int,
+        data: Data
+    ) {
+        // Implementation in UnrealBridge.mm
+    }
+
+    @objc public func binaryChunkFooter(
+        target: String,
+        method: String,
+        transferId: String,
+        totalChunks: Int,
+        checksum: Int
+    ) {
+        // Implementation in UnrealBridge.mm
+    }
+
+    @objc public func setBinaryChunkSize(_ size: Int) {
+        // Implementation in UnrealBridge.mm
+    }
+
+    // Called from Unreal C++ when binary message is received
+    @objc public func notifyBinaryMessage(
+        target: String,
+        method: String,
+        data: Data,
+        isCompressed: Bool,
+        checksum: Int
+    ) {
+        controller?.onBinaryMessageFromUnreal(
+            target: target,
+            method: method,
+            data: data,
+            isCompressed: isCompressed,
+            checksum: checksum
+        )
+    }
+
+    // Called from Unreal C++ when binary chunk is received
+    public func notifyBinaryChunk(
+        target: String,
+        method: String,
+        chunkType: String,
+        transferId: String,
+        chunkIndex: Int?,
+        totalChunks: Int,
+        totalSize: Int?,
+        data: Data?,
+        checksum: Int?
+    ) {
+        controller?.onBinaryChunkFromUnreal(
+            target: target,
+            method: method,
+            chunkType: chunkType,
+            transferId: transferId,
+            chunkIndex: chunkIndex,
+            totalChunks: totalChunks,
+            totalSize: totalSize,
+            data: data,
+            checksum: checksum
+        )
+    }
+
+    // Called from Unreal C++ to report binary transfer progress
+    @objc public func notifyBinaryProgress(
+        transferId: String,
+        currentChunk: Int,
+        totalChunks: Int,
+        bytesTransferred: Int64,
+        totalBytes: Int64
+    ) {
+        controller?.onBinaryProgress(
+            transferId: transferId,
+            currentChunk: currentChunk,
+            totalChunks: totalChunks,
+            bytesTransferred: bytesTransferred,
+            totalBytes: totalBytes
+        )
     }
 }

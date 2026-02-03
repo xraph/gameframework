@@ -85,6 +85,19 @@ class UnrealEnginePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             "engine#isInBackground" -> {
                 handleIsInBackground(call, result)
             }
+            // Binary messaging
+            "engine#sendBinaryMessage" -> {
+                handleSendBinaryMessage(call, result)
+            }
+            "engine#sendBinaryChunk" -> {
+                handleSendBinaryChunk(call, result)
+            }
+            "engine#sendCompressedMessage" -> {
+                handleSendCompressedMessage(call, result)
+            }
+            "engine#setBinaryChunkSize" -> {
+                handleSetBinaryChunkSize(call, result)
+            }
             else -> {
                 result.notImplemented()
             }
@@ -183,6 +196,57 @@ class UnrealEnginePlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private fun handleIsInBackground(call: MethodCall, result: Result) {
         val isBackground = getController(call)?.isInBackground() ?: false
         result.success(isBackground)
+    }
+
+    // MARK: - Binary Messaging Handlers
+
+    private fun handleSendBinaryMessage(call: MethodCall, result: Result) {
+        val target = call.argument<String>("target") ?: ""
+        val method = call.argument<String>("method") ?: ""
+        val data = call.argument<String>("data") ?: ""
+        val originalSize = call.argument<Int>("originalSize") ?: 0
+        val compressedSize = call.argument<Int>("compressedSize") ?: 0
+        val isCompressed = call.argument<Boolean>("isCompressed") ?: false
+        val checksum = call.argument<Int>("checksum") ?: 0
+
+        getController(call)?.sendBinaryMessage(
+            target, method, data, originalSize, compressedSize, isCompressed, checksum
+        )
+        result.success(null)
+    }
+
+    private fun handleSendBinaryChunk(call: MethodCall, result: Result) {
+        val target = call.argument<String>("target") ?: ""
+        val method = call.argument<String>("method") ?: ""
+        val chunkType = call.argument<String>("type") ?: "data"
+        val transferId = call.argument<String>("transferId") ?: ""
+        val chunkIndex = call.argument<Int>("chunkIndex")
+        val totalChunks = call.argument<Int>("totalChunks") ?: 0
+        val totalSize = call.argument<Int>("totalSize")
+        val data = call.argument<String>("data")
+        val checksum = call.argument<Int>("checksum")
+
+        getController(call)?.sendBinaryChunk(
+            target, method, chunkType, transferId, chunkIndex, totalChunks, totalSize, data, checksum
+        )
+        result.success(null)
+    }
+
+    private fun handleSendCompressedMessage(call: MethodCall, result: Result) {
+        val target = call.argument<String>("target") ?: ""
+        val method = call.argument<String>("method") ?: ""
+        val data = call.argument<String>("data") ?: ""
+        val originalSize = call.argument<Int>("originalSize") ?: 0
+        val compressedSize = call.argument<Int>("compressedSize") ?: 0
+
+        getController(call)?.sendCompressedMessage(target, method, data, originalSize, compressedSize)
+        result.success(null)
+    }
+
+    private fun handleSetBinaryChunkSize(call: MethodCall, result: Result) {
+        val size = call.argument<Int>("size") ?: 65536
+        getController(call)?.setBinaryChunkSize(size)
+        result.success(null)
     }
 
     private fun getController(call: MethodCall): UnrealEngineController? {

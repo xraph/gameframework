@@ -2,10 +2,15 @@ package com.xraph.gameframework.unreal
 
 import android.app.Activity
 import android.content.Context
+import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
  * Unreal Engine Controller for Android
@@ -184,6 +189,141 @@ class UnrealEngineController(
         }
     }
 
+    // MARK: - Binary Messaging
+
+    /**
+     * Send binary data to Unreal Engine
+     *
+     * @param target Target object in Unreal
+     * @param method Method name to call
+     * @param data Base64 encoded binary data
+     * @param originalSize Original uncompressed size
+     * @param compressedSize Size after compression
+     * @param isCompressed Whether data is compressed
+     * @param checksum CRC32 checksum
+     */
+    fun sendBinaryMessage(
+        target: String,
+        method: String,
+        data: String,
+        originalSize: Int,
+        compressedSize: Int,
+        isCompressed: Boolean,
+        checksum: Int
+    ) {
+        if (!isReady.get() || isDestroyed.get()) {
+            sendError("Engine not ready for binary messages")
+            return
+        }
+
+        try {
+            val decodedData = Base64.decode(data, Base64.DEFAULT)
+            val processedData = if (isCompressed) {
+                decompressGzip(decodedData)
+            } else {
+                decodedData
+            }
+            nativeSendBinaryMessage(target, method, processedData, checksum)
+        } catch (e: Exception) {
+            sendError("Failed to send binary message: ${e.message}")
+        }
+    }
+
+    /**
+     * Send binary chunk for chunked transfer
+     */
+    fun sendBinaryChunk(
+        target: String,
+        method: String,
+        chunkType: String,
+        transferId: String,
+        chunkIndex: Int?,
+        totalChunks: Int,
+        totalSize: Int?,
+        data: String?,
+        checksum: Int?
+    ) {
+        if (!isReady.get() || isDestroyed.get()) {
+            sendError("Engine not ready for binary chunks")
+            return
+        }
+
+        try {
+            when (chunkType) {
+                "header" -> {
+                    nativeBinaryChunkHeader(
+                        target, method, transferId, totalSize ?: 0, totalChunks, checksum ?: 0
+                    )
+                }
+                "data" -> {
+                    val decodedData = data?.let { Base64.decode(it, Base64.DEFAULT) } ?: ByteArray(0)
+                    nativeBinaryChunkData(target, method, transferId, chunkIndex ?: 0, decodedData)
+                }
+                "footer" -> {
+                    nativeBinaryChunkFooter(target, method, transferId, totalChunks, checksum ?: 0)
+                }
+            }
+        } catch (e: Exception) {
+            sendError("Failed to send binary chunk: ${e.message}")
+        }
+    }
+
+    /**
+     * Send compressed string data
+     */
+    fun sendCompressedMessage(
+        target: String,
+        method: String,
+        data: String,
+        originalSize: Int,
+        compressedSize: Int
+    ) {
+        if (!isReady.get() || isDestroyed.get()) {
+            sendError("Engine not ready for compressed messages")
+            return
+        }
+
+        try {
+            val decodedData = Base64.decode(data, Base64.DEFAULT)
+            val decompressed = decompressGzip(decodedData)
+            nativeSendMessage(target, method, String(decompressed, Charsets.UTF_8))
+        } catch (e: Exception) {
+            sendError("Failed to send compressed message: ${e.message}")
+        }
+    }
+
+    /**
+     * Set the chunk size for binary transfers
+     */
+    fun setBinaryChunkSize(size: Int) {
+        try {
+            nativeSetBinaryChunkSize(size)
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed to set binary chunk size: ${e.message}")
+        }
+    }
+
+    // MARK: - Compression Utilities
+
+    private fun compressGzip(data: ByteArray): ByteArray {
+        val byteStream = ByteArrayOutputStream()
+        GZIPOutputStream(byteStream).use { gzip ->
+            gzip.write(data)
+        }
+        return byteStream.toByteArray()
+    }
+
+    private fun decompressGzip(data: ByteArray): ByteArray {
+        // Check for GZIP magic number
+        if (data.size >= 2 && data[0] == 0x1F.toByte() && data[1] == 0x8B.toByte()) {
+            val byteStream = ByteArrayInputStream(data)
+            GZIPInputStream(byteStream).use { gzip ->
+                return gzip.readBytes()
+            }
+        }
+        return data
+    }
+
     // MARK: - Unreal-Specific Methods
 
     /**
@@ -335,6 +475,83 @@ class UnrealEngineController(
         }
     }
 
+    /**
+     * Called from native code when a binary message is received from Unreal
+     */
+    @Suppress("unused")
+    fun onBinaryMessageFromUnreal(
+        target: String,
+        method: String,
+        data: ByteArray,
+        isCompressed: Boolean,
+        checksum: Int
+    ) {
+        activity.runOnUiThread {
+            val encodedData = Base64.encodeToString(data, Base64.NO_WRAP)
+            channel.invokeMethod("onBinaryMessage", mapOf(
+                "target" to target,
+                "method" to method,
+                "data" to encodedData,
+                "isCompressed" to isCompressed,
+                "checksum" to checksum
+            ))
+        }
+    }
+
+    /**
+     * Called from native code when a binary chunk is received from Unreal
+     */
+    @Suppress("unused")
+    fun onBinaryChunkFromUnreal(
+        target: String,
+        method: String,
+        chunkType: String,
+        transferId: String,
+        chunkIndex: Int?,
+        totalChunks: Int,
+        totalSize: Int?,
+        data: ByteArray?,
+        checksum: Int?
+    ) {
+        activity.runOnUiThread {
+            val chunkMap = mutableMapOf<String, Any>(
+                "target" to target,
+                "method" to method,
+                "type" to chunkType,
+                "transferId" to transferId,
+                "totalChunks" to totalChunks
+            )
+            chunkIndex?.let { chunkMap["chunkIndex"] = it }
+            totalSize?.let { chunkMap["totalSize"] = it }
+            data?.let { chunkMap["data"] = Base64.encodeToString(it, Base64.NO_WRAP) }
+            checksum?.let { chunkMap["checksum"] = it }
+
+            channel.invokeMethod("onBinaryChunk", chunkMap)
+        }
+    }
+
+    /**
+     * Called from native code to report binary transfer progress
+     */
+    @Suppress("unused")
+    fun onBinaryProgress(
+        transferId: String,
+        currentChunk: Int,
+        totalChunks: Int,
+        bytesTransferred: Long,
+        totalBytes: Long
+    ) {
+        activity.runOnUiThread {
+            channel.invokeMethod("onBinaryProgress", mapOf(
+                "transferId" to transferId,
+                "currentChunk" to currentChunk,
+                "totalChunks" to totalChunks,
+                "bytesTransferred" to bytesTransferred,
+                "totalBytes" to totalBytes
+            ))
+        }
+    }
+
     // MARK: - Native Methods (JNI)
 
     /**
@@ -386,4 +603,55 @@ class UnrealEngineController(
      * Get quality settings
      */
     private external fun nativeGetQualitySettings(): Map<String, Any>
+
+    // MARK: - Binary Native Methods (JNI)
+
+    /**
+     * Send binary message to Unreal
+     */
+    private external fun nativeSendBinaryMessage(
+        target: String,
+        method: String,
+        data: ByteArray,
+        checksum: Int
+    )
+
+    /**
+     * Send binary chunk header
+     */
+    private external fun nativeBinaryChunkHeader(
+        target: String,
+        method: String,
+        transferId: String,
+        totalSize: Int,
+        totalChunks: Int,
+        checksum: Int
+    )
+
+    /**
+     * Send binary chunk data
+     */
+    private external fun nativeBinaryChunkData(
+        target: String,
+        method: String,
+        transferId: String,
+        chunkIndex: Int,
+        data: ByteArray
+    )
+
+    /**
+     * Send binary chunk footer
+     */
+    private external fun nativeBinaryChunkFooter(
+        target: String,
+        method: String,
+        transferId: String,
+        totalChunks: Int,
+        checksum: Int
+    )
+
+    /**
+     * Set chunk size for binary transfers
+     */
+    private external fun nativeSetBinaryChunkSize(size: Int)
 }

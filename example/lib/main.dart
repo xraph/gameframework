@@ -2,12 +2,15 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:gameframework/gameframework.dart';
 import 'package:gameframework_unity/gameframework_unity.dart';
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+import 'unreal_example.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize engine plugins
   UnityEnginePlugin.initialize();
+  UnrealEnginePlugin.initialize();
 
   runApp(const MyApp());
 }
@@ -85,19 +88,21 @@ class HomePage extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Unreal Engine plugin coming soon!'),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const UnrealExampleScreen(),
                   ),
                 );
               },
-              icon: const Icon(Icons.code),
-              label: const Text('Unreal Example (Coming Soon)'),
+              icon: const Icon(Icons.videogame_asset),
+              label: const Text('Unreal Example'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 32,
                   vertical: 16,
                 ),
+                backgroundColor: Colors.purple,
               ),
             ),
             const SizedBox(height: 16),

@@ -22,6 +22,13 @@ Integrate **Unreal Engine 5.x** into your Flutter applications with full bidirec
 - 📊 Quality level control (AA, shadows, textures, effects, etc.)
 - 🎬 Blueprint events for lifecycle and messaging
 
+🚀 **Advanced Features:**
+- 📦 Binary messaging with compression and chunked transfers
+- ⏱️ Message batching and throttling for performance optimization
+- 📊 Delta compression for efficient state synchronization
+- 🗃️ Asset management with caching and progress tracking
+- 🔀 Message routing with target-based dispatch
+
 ## Platform Support
 
 | Platform | Status | Requirements |
@@ -126,6 +133,221 @@ await controller.applyQualitySettings(UnrealQualitySettings.epic());
 
 // Get current settings
 final settings = await controller.getQualitySettings();
+```
+
+## Advanced Features
+
+### Binary Messaging
+
+Send binary data efficiently with compression and chunked transfers:
+
+```dart
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+
+// Send binary data
+final imageBytes = await loadImage();
+await controller.sendBinaryMessage('TextureManager', 'updateTexture', imageBytes);
+
+// Send compressed binary data (auto-compresses with GZip)
+await controller.sendCompressedMessage('AssetLoader', 'loadAsset', largeData);
+
+// Send large data in chunks (for data > 64KB)
+await controller.sendChunkedBinaryMessage(
+  'AssetLoader',
+  'loadLargeAsset',
+  veryLargeData,
+  chunkSize: 32 * 1024, // 32KB chunks
+);
+
+// Listen for binary progress
+controller.binaryProgressStream.listen((progress) {
+  print('Transfer: ${progress.progress * 100}%');
+});
+
+// Access the binary protocol directly
+final protocol = controller.binaryProtocol;
+final compressed = protocol.compressGzip(data);
+final encoded = protocol.encodeBase64(compressed);
+```
+
+### Message Batching
+
+Optimize high-frequency messaging with batching:
+
+```dart
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+
+// Create a batcher
+final batcher = UnrealMessageBatcher(
+  onFlush: (batch) {
+    for (final msg in batch) {
+      controller.sendMessage(msg['target'], msg['method'], msg['data']);
+    }
+  },
+);
+
+// Configure batching
+batcher.configure(
+  maxBatchSize: 50,        // Flush when 50 messages queued
+  flushIntervalMs: 16,     // Or every 16ms (60 FPS)
+  enableCoalescing: true,  // Combine duplicate messages
+);
+
+// Queue messages - they'll be batched automatically
+batcher.queue('Player', 'updatePosition', '{"x": 10, "y": 20}');
+batcher.queue('Player', 'updatePosition', '{"x": 11, "y": 21}'); // Coalesced
+batcher.queue('Enemy', 'updateHealth', '{"hp": 50}');
+
+// Manual flush if needed
+final batch = batcher.flush();
+
+// Get statistics
+final stats = batcher.statistics;
+print('Total queued: ${stats.totalMessagesQueued}');
+print('Coalesced: ${stats.totalMessagesCoalesced}');
+
+// Cleanup
+batcher.dispose();
+```
+
+### Message Throttling
+
+Rate-limit high-frequency events:
+
+```dart
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+
+// Create a throttler
+final throttler = UnrealMessageThrottler();
+
+// Set rate limits (messages per second)
+throttler.setRateLimit('Player', 'updatePosition', 30); // Max 30/sec
+throttler.setRateLimit('UI', 'updateScore', 10);         // Max 10/sec
+
+// Throttle strategies
+throttler.setRateLimit('Input', 'mouseMove', 60, 
+  strategy: ThrottleStrategy.keepLatest); // Keep most recent
+
+throttler.setRateLimit('Network', 'sync', 5,
+  strategy: ThrottleStrategy.queue);       // Queue for later
+
+// Send throttled messages
+await throttler.send(
+  controller,
+  'Player',
+  'updatePosition',
+  '{"x": 100, "y": 200}',
+);
+
+// Flush any pending messages
+await throttler.flushPending();
+
+// Statistics
+final stats = throttler.statistics;
+print('Dropped: ${stats.messagesDropped}');
+print('Queued: ${stats.messagesQueued}');
+
+throttler.dispose();
+```
+
+### Delta Compression
+
+Efficiently synchronize state with delta encoding:
+
+```dart
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+
+// Create a compressor
+final compressor = UnrealDeltaCompressor();
+
+// Configure
+compressor.configure(
+  maxHistorySize: 10,        // Keep last 10 states
+  enableDeepComparison: true,
+);
+
+// Compute delta between states
+final oldState = {'x': 0, 'y': 0, 'health': 100};
+final newState = {'x': 10, 'y': 0, 'health': 75};
+
+final delta = compressor.computeDelta('player', oldState, newState);
+
+if (delta.hasChanges) {
+  // Only send changed values: {'x': 10, 'health': 75}
+  controller.sendJsonMessage('Player', 'syncState', delta.delta);
+}
+
+// Record state for future deltas
+compressor.recordState('player', newState);
+
+// Compute delta from history
+final nextState = {'x': 15, 'y': 5, 'health': 75};
+final nextDelta = compressor.computeDeltaFromHistory('player', nextState);
+// Only {'x': 15, 'y': 5} will be in delta
+
+// Apply delta on receiving end
+final baseState = {'x': 0, 'y': 0, 'health': 100};
+final applied = compressor.applyDelta(baseState, delta.delta);
+
+// Statistics
+final stats = compressor.statistics;
+print('Compression ratio: ${stats.averageCompressionRatio}');
+
+compressor.dispose();
+```
+
+### Asset Manager
+
+Manage asset loading with progress tracking and caching:
+
+```dart
+import 'package:gameframework_unreal/gameframework_unreal.dart';
+
+// Create asset manager
+final assetManager = UnrealAssetManager();
+
+// Configure cache
+assetManager.setCacheMaxSize(512 * 1024 * 1024); // 512 MB
+
+// Load single asset
+await assetManager.loadAsset('/Game/Textures/PlayerTexture');
+
+// Load multiple assets with progress
+assetManager.startBatchLoad([
+  '/Game/Meshes/Character',
+  '/Game/Textures/CharacterSkin',
+  '/Game/Animations/Walk',
+]);
+
+// Monitor progress
+while (!assetManager.isBatchComplete) {
+  print('Progress: ${(assetManager.batchProgress * 100).toInt()}%');
+  await Future.delayed(Duration(milliseconds: 100));
+}
+
+// Check if loaded
+if (assetManager.isLoaded('/Game/Textures/PlayerTexture')) {
+  final info = assetManager.getAssetInfo('/Game/Textures/PlayerTexture');
+  print('Size: ${info?.sizeBytes} bytes');
+  print('Load time: ${info?.loadTimeMs}ms');
+}
+
+// Load level
+await assetManager.loadLevel('MainMenu');
+
+// Unload assets
+assetManager.unloadAsset('/Game/Textures/OldTexture');
+
+// Cache management
+print('Cache size: ${assetManager.currentCacheSize} bytes');
+assetManager.clearCache();
+
+// Statistics
+final stats = assetManager.statistics;
+print('Cache hit rate: ${(stats.cacheHitRate * 100).toInt()}%');
+print('Total loaded: ${stats.totalAssetsLoaded}');
+
+assetManager.dispose();
 ```
 
 ### Quality Settings

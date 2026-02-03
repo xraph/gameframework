@@ -86,6 +86,19 @@ public class UnrealEnginePlugin: NSObject, FlutterPlugin {
         case "engine#isInBackground":
             handleIsInBackground(call: call, result: result)
 
+        // Binary messaging
+        case "engine#sendBinaryMessage":
+            handleSendBinaryMessage(call: call, result: result)
+
+        case "engine#sendBinaryChunk":
+            handleSendBinaryChunk(call: call, result: result)
+
+        case "engine#sendCompressedMessage":
+            handleSendCompressedMessage(call: call, result: result)
+
+        case "engine#setBinaryChunkSize":
+            handleSetBinaryChunkSize(call: call, result: result)
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -329,6 +342,115 @@ public class UnrealEnginePlugin: NSObject, FlutterPlugin {
 
         let isBackground = controller.isInBackground()
         result(isBackground)
+    }
+
+    // MARK: - Binary Messaging Handlers
+
+    private func handleSendBinaryMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let controller = getController(from: call),
+              let args = call.arguments as? [String: Any],
+              let target = args["target"] as? String,
+              let method = args["method"] as? String,
+              let data = args["data"] as? String,
+              let originalSize = args["originalSize"] as? Int,
+              let compressedSize = args["compressedSize"] as? Int,
+              let isCompressed = args["isCompressed"] as? Bool,
+              let checksum = args["checksum"] as? Int else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "Binary message parameters are required",
+                details: nil
+            ))
+            return
+        }
+
+        controller.sendBinaryMessage(
+            target: target,
+            method: method,
+            data: data,
+            originalSize: originalSize,
+            compressedSize: compressedSize,
+            isCompressed: isCompressed,
+            checksum: checksum
+        )
+        result(nil)
+    }
+
+    private func handleSendBinaryChunk(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let controller = getController(from: call),
+              let args = call.arguments as? [String: Any],
+              let target = args["target"] as? String,
+              let method = args["method"] as? String,
+              let chunkType = args["type"] as? String,
+              let transferId = args["transferId"] as? String,
+              let totalChunks = args["totalChunks"] as? Int else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "Binary chunk parameters are required",
+                details: nil
+            ))
+            return
+        }
+
+        let chunkIndex = args["chunkIndex"] as? Int
+        let totalSize = args["totalSize"] as? Int
+        let data = args["data"] as? String
+        let checksum = args["checksum"] as? Int
+
+        controller.sendBinaryChunk(
+            target: target,
+            method: method,
+            chunkType: chunkType,
+            transferId: transferId,
+            chunkIndex: chunkIndex,
+            totalChunks: totalChunks,
+            totalSize: totalSize,
+            data: data,
+            checksum: checksum
+        )
+        result(nil)
+    }
+
+    private func handleSendCompressedMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let controller = getController(from: call),
+              let args = call.arguments as? [String: Any],
+              let target = args["target"] as? String,
+              let method = args["method"] as? String,
+              let data = args["data"] as? String,
+              let originalSize = args["originalSize"] as? Int,
+              let compressedSize = args["compressedSize"] as? Int else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "Compressed message parameters are required",
+                details: nil
+            ))
+            return
+        }
+
+        controller.sendCompressedMessage(
+            target: target,
+            method: method,
+            data: data,
+            originalSize: originalSize,
+            compressedSize: compressedSize
+        )
+        result(nil)
+    }
+
+    private func handleSetBinaryChunkSize(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let controller = getController(from: call),
+              let args = call.arguments as? [String: Any],
+              let size = args["size"] as? Int else {
+            result(FlutterError(
+                code: "INVALID_ARGUMENTS",
+                message: "size is required",
+                details: nil
+            ))
+            return
+        }
+
+        controller.setBinaryChunkSize(size)
+        result(nil)
     }
 
     // MARK: - Helper Methods

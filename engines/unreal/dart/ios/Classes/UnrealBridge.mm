@@ -1,9 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#import "UnrealEngineController.swift"
-#include "FlutterBridge.h"
+// Check if UnrealFramework is available
+#if __has_include("FlutterBridge.h")
 
-#if PLATFORM_IOS
+#import <Foundation/Foundation.h>
+#include "FlutterBridge.h"
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -346,4 +347,109 @@ void FlutterBridge_SetInstance_iOS(AFlutterBridge* Instance)
     UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_iOS] FlutterBridge instance set"));
 }
 
-#endif // PLATFORM_IOS
+#else
+// Stub implementation when UnrealFramework is not available
+// This allows the plugin to compile during development without Unreal Engine
+
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+// Forward declare the Swift class to avoid import issues
+@class UnrealEngineController;
+
+@interface UnrealBridge : NSObject
++ (UnrealBridge*)shared;
+- (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller;
+- (UIView*)getView;
+- (void)pause;
+- (void)resume;
+- (void)quit;
+- (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data;
+- (void)executeConsoleCommand:(NSString*)command;
+- (void)loadLevel:(NSString*)levelName;
+- (void)applyQualitySettings:(NSDictionary*)settings;
+- (NSDictionary*)getQualitySettings;
+- (void)sendBinaryMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data checksum:(NSInteger)checksum;
+- (void)binaryChunkHeaderWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId totalSize:(NSInteger)totalSize totalChunks:(NSInteger)totalChunks checksum:(NSInteger)checksum;
+- (void)binaryChunkDataWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId chunkIndex:(NSInteger)chunkIndex data:(NSData*)data;
+- (void)binaryChunkFooterWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId totalChunks:(NSInteger)totalChunks checksum:(NSInteger)checksum;
+- (void)setBinaryChunkSize:(NSInteger)size;
+@end
+
+@implementation UnrealBridge
+
++ (UnrealBridge*)shared {
+    static UnrealBridge* instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[UnrealBridge alloc] init];
+    });
+    return instance;
+}
+
+- (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller {
+    NSLog(@"[UnrealBridge] Stub: create called (UnrealFramework not available)");
+    return NO;
+}
+
+- (UIView*)getView {
+    NSLog(@"[UnrealBridge] Stub: getView called (UnrealFramework not available)");
+    return nil;
+}
+
+- (void)pause {
+    NSLog(@"[UnrealBridge] Stub: pause called (UnrealFramework not available)");
+}
+
+- (void)resume {
+    NSLog(@"[UnrealBridge] Stub: resume called (UnrealFramework not available)");
+}
+
+- (void)quit {
+    NSLog(@"[UnrealBridge] Stub: quit called (UnrealFramework not available)");
+}
+
+- (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data {
+    NSLog(@"[UnrealBridge] Stub: sendMessage called (UnrealFramework not available)");
+}
+
+- (void)executeConsoleCommand:(NSString*)command {
+    NSLog(@"[UnrealBridge] Stub: executeConsoleCommand called (UnrealFramework not available)");
+}
+
+- (void)loadLevel:(NSString*)levelName {
+    NSLog(@"[UnrealBridge] Stub: loadLevel called (UnrealFramework not available)");
+}
+
+- (void)applyQualitySettings:(NSDictionary*)settings {
+    NSLog(@"[UnrealBridge] Stub: applyQualitySettings called (UnrealFramework not available)");
+}
+
+- (NSDictionary*)getQualitySettings {
+    NSLog(@"[UnrealBridge] Stub: getQualitySettings called (UnrealFramework not available)");
+    return @{};
+}
+
+- (void)sendBinaryMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data checksum:(NSInteger)checksum {
+    NSLog(@"[UnrealBridge] Stub: sendBinaryMessage called (UnrealFramework not available)");
+}
+
+- (void)binaryChunkHeaderWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId totalSize:(NSInteger)totalSize totalChunks:(NSInteger)totalChunks checksum:(NSInteger)checksum {
+    NSLog(@"[UnrealBridge] Stub: binaryChunkHeader called (UnrealFramework not available)");
+}
+
+- (void)binaryChunkDataWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId chunkIndex:(NSInteger)chunkIndex data:(NSData*)data {
+    NSLog(@"[UnrealBridge] Stub: binaryChunkData called (UnrealFramework not available)");
+}
+
+- (void)binaryChunkFooterWithTarget:(NSString*)target method:(NSString*)method transferId:(NSString*)transferId totalChunks:(NSInteger)totalChunks checksum:(NSInteger)checksum {
+    NSLog(@"[UnrealBridge] Stub: binaryChunkFooter called (UnrealFramework not available)");
+}
+
+- (void)setBinaryChunkSize:(NSInteger)size {
+    NSLog(@"[UnrealBridge] Stub: setBinaryChunkSize called (UnrealFramework not available)");
+}
+
+@end
+
+#endif // __has_include("FlutterBridge.h")

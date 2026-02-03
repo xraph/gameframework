@@ -24,6 +24,9 @@ dependencies:
 
   # Unity plugin
   gameframework_unity: 0.0.1
+  
+  # Unreal plugin
+  gameframework_unreal: 0.0.1
 
   # green:
   #   hosted: http://localhost:4000
