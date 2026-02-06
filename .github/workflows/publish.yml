@@ -22,10 +22,13 @@ on:
         default: true
         type: boolean
 
+permissions:
+  contents: write
+
 jobs:
   # Validate all packages before publishing
   validate:
-    name: Validate Packages
+    name: Validate ${{ matrix.package.name }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -61,7 +64,7 @@ jobs:
 
       - name: Validate package
         working-directory: ${{ matrix.package.path }}
-        run: dart pub publish --dry-run
+        run: flutter pub publish --dry-run
 
   # Publish gameframework (core package) first
   publish-gameframework:
@@ -70,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && 
+      (github.event_name == 'workflow_dispatch' &&
        (github.event.inputs.package == 'all' || github.event.inputs.package == 'gameframework'))
     steps:
       - name: Checkout repository
@@ -96,12 +99,12 @@ jobs:
       - name: Publish to pub.dev (dry-run)
         if: github.event.inputs.dry_run == 'true'
         working-directory: packages/gameframework
-        run: dart pub publish --dry-run
+        run: flutter pub publish --dry-run
 
       - name: Publish to pub.dev
         if: github.event.inputs.dry_run != 'true'
         working-directory: packages/gameframework
-        run: dart pub publish --force
+        run: flutter pub publish --force
 
       - name: Extract version
         if: github.event.inputs.dry_run != 'true'
@@ -112,124 +115,24 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Published gameframework v$VERSION"
 
-  # Publish Unity plugin individually (manual dispatch only)
-  publish-unity:
-    name: Publish gameframework_unity
-    needs: [validate, publish-gameframework]
-    runs-on: ubuntu-latest
-    if: |
-      always() &&
-      github.event_name == 'workflow_dispatch' && 
-      github.event.inputs.package == 'gameframework_unity'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.27.x'
-          channel: 'stable'
-          cache: true
-
-      - name: Wait for gameframework availability
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          echo "Waiting 60 seconds for gameframework to be available on pub.dev..."
-          sleep 60
-
-      - name: Get dependencies
-        working-directory: engines/unity/dart
-        run: flutter pub get
-
-      - name: Setup pub credentials
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          mkdir -p $HOME/.pub-cache
-          echo '${{ secrets.PUB_CREDENTIALS }}' > $HOME/.pub-cache/credentials.json
-
-      - name: Publish to pub.dev (dry-run)
-        if: github.event.inputs.dry_run == 'true'
-        working-directory: engines/unity/dart
-        run: dart pub publish --dry-run
-
-      - name: Publish to pub.dev
-        if: github.event.inputs.dry_run != 'true'
-        working-directory: engines/unity/dart
-        run: dart pub publish --force
-
-      - name: Extract version
-        if: github.event.inputs.dry_run != 'true'
-        id: version
-        working-directory: engines/unity/dart
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Published gameframework_unity v$VERSION"
-
-  # Publish Unreal plugin individually (manual dispatch only)
-  publish-unreal:
-    name: Publish gameframework_unreal
-    needs: [validate, publish-gameframework]
-    runs-on: ubuntu-latest
-    if: |
-      always() &&
-      github.event_name == 'workflow_dispatch' && 
-      github.event.inputs.package == 'gameframework_unreal'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.27.x'
-          channel: 'stable'
-          cache: true
-
-      - name: Wait for gameframework availability
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          echo "Waiting 60 seconds for gameframework to be available on pub.dev..."
-          sleep 60
-
-      - name: Get dependencies
-        working-directory: engines/unreal/dart
-        run: flutter pub get
-
-      - name: Setup pub credentials
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          mkdir -p $HOME/.pub-cache
-          echo '${{ secrets.PUB_CREDENTIALS }}' > $HOME/.pub-cache/credentials.json
-
-      - name: Publish to pub.dev (dry-run)
-        if: github.event.inputs.dry_run == 'true'
-        working-directory: engines/unreal/dart
-        run: dart pub publish --dry-run
-
-      - name: Publish to pub.dev
-        if: github.event.inputs.dry_run != 'true'
-        working-directory: engines/unreal/dart
-        run: dart pub publish --force
-
-      - name: Extract version
-        if: github.event.inputs.dry_run != 'true'
-        id: version
-        working-directory: engines/unreal/dart
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Published gameframework_unreal v$VERSION"
-
-  # Publish Unity and Unreal plugins in parallel (after core package)
+  # Publish engine plugins after core package
+  # matrix is NOT available in job-level `if`, so per-package filtering
+  # is handled at the step level via the should_publish check.
   publish-engine-plugins:
     name: Publish ${{ matrix.package.name }}
-    needs: publish-gameframework
+    needs: [validate, publish-gameframework]
     runs-on: ubuntu-latest
+    # always() is required so this job isn't auto-skipped when publish-gameframework is skipped
+    # (e.g. when dispatching for a single engine plugin only).
+    # We gate on validate succeeding and publish-gameframework not having failed.
     if: |
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.package == 'all')
+      always() &&
+      needs.validate.result == 'success' &&
+      (needs.publish-gameframework.result == 'success' || needs.publish-gameframework.result == 'skipped') &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.package != 'gameframework')
+      )
     strategy:
       matrix:
         package:
@@ -238,45 +141,73 @@ jobs:
           - name: gameframework_unreal
             path: engines/unreal/dart
     steps:
+      # Determine at step level whether this specific matrix entry should publish.
+      # matrix context IS available in step-level expressions.
+      - name: Check if this package should be published
+        id: should_publish
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] || \
+             [[ "${{ github.event.inputs.package }}" == "all" ]] || \
+             [[ "${{ github.event.inputs.package }}" == "${{ matrix.package.name }}" ]]; then
+            echo "publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "publish=false" >> $GITHUB_OUTPUT
+            echo "Skipping ${{ matrix.package.name }} (not selected)"
+          fi
+
       - name: Checkout repository
+        if: steps.should_publish.outputs.publish == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Flutter
+        if: steps.should_publish.outputs.publish == 'true'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.27.x'
           channel: 'stable'
           cache: true
 
-      # Wait for gameframework to be available on pub.dev
-      - name: Wait for gameframework availability
-        if: github.event.inputs.dry_run != 'true'
+      # Only wait if the core package was actually published (not skipped/dry-run)
+      - name: Wait for gameframework availability on pub.dev
+        if: |
+          steps.should_publish.outputs.publish == 'true' &&
+          github.event.inputs.dry_run != 'true' &&
+          needs.publish-gameframework.result == 'success'
         run: |
           echo "Waiting 60 seconds for gameframework to be available on pub.dev..."
           sleep 60
 
       - name: Get dependencies
+        if: steps.should_publish.outputs.publish == 'true'
         working-directory: ${{ matrix.package.path }}
         run: flutter pub get
 
       - name: Setup pub credentials
-        if: github.event.inputs.dry_run != 'true'
+        if: |
+          steps.should_publish.outputs.publish == 'true' &&
+          github.event.inputs.dry_run != 'true'
         run: |
           mkdir -p $HOME/.pub-cache
           echo '${{ secrets.PUB_CREDENTIALS }}' > $HOME/.pub-cache/credentials.json
 
       - name: Publish to pub.dev (dry-run)
-        if: github.event.inputs.dry_run == 'true'
+        if: |
+          steps.should_publish.outputs.publish == 'true' &&
+          github.event.inputs.dry_run == 'true'
         working-directory: ${{ matrix.package.path }}
-        run: dart pub publish --dry-run
+        run: flutter pub publish --dry-run
 
       - name: Publish to pub.dev
-        if: github.event.inputs.dry_run != 'true'
+        if: |
+          steps.should_publish.outputs.publish == 'true' &&
+          github.event.inputs.dry_run != 'true'
         working-directory: ${{ matrix.package.path }}
-        run: dart pub publish --force
+        run: flutter pub publish --force
 
       - name: Extract version
-        if: github.event.inputs.dry_run != 'true'
+        if: |
+          steps.should_publish.outputs.publish == 'true' &&
+          github.event.inputs.dry_run != 'true'
         id: version
         working-directory: ${{ matrix.package.path }}
         run: |
@@ -284,12 +215,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Published ${{ matrix.package.name }} v$VERSION"
 
-  # Create GitHub release
+  # Create GitHub release on tag push after all packages are published
   create-release:
     name: Create GitHub Release
     needs: [publish-gameframework, publish-engine-plugins]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.publish-gameframework.result == 'success' &&
+      needs.publish-engine-plugins.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -301,9 +237,9 @@ jobs:
       - name: Read CHANGELOG
         id: changelog
         run: |
-          if [ -f CHANGELOG.md ]; then
-            # Extract the latest changelog entry
-            CHANGELOG=$(awk '/^## \[?[0-9]/{if(++count==2) exit} count==1' CHANGELOG.md)
+          CHANGELOG_FILE="packages/gameframework/CHANGELOG.md"
+          if [ -f "$CHANGELOG_FILE" ]; then
+            CHANGELOG=$(awk '/^## \[?[0-9]/{if(++count==2) exit} count==1' "$CHANGELOG_FILE")
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
             echo "$CHANGELOG" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
@@ -312,20 +248,18 @@ jobs:
           fi
 
       - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.tag_version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ steps.tag_version.outputs.version }}
           body: |
             ## Flutter Game Framework ${{ steps.tag_version.outputs.version }}
-            
+
             Published packages:
             - [gameframework](https://pub.dev/packages/gameframework)
             - [gameframework_unity](https://pub.dev/packages/gameframework_unity)
             - [gameframework_unreal](https://pub.dev/packages/gameframework_unreal)
-            
+
             ### Changelog
             ${{ steps.changelog.outputs.changelog }}
           draft: false
