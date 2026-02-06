@@ -1,476 +1,66 @@
 import Flutter
-import UIKit
+import Foundation
+import gameframework
 
 /**
- * Unreal Engine Plugin for iOS
+ * UnrealEnginePlugin - Plugin for Unreal Engine integration
  *
- * Manages Unreal Engine integration with Flutter on iOS.
- * Provides lifecycle management, communication, and quality settings control.
+ * This plugin registers the Unreal engine factory with the game framework,
+ * allowing Unreal Engine to be embedded in Flutter applications on iOS.
  */
 public class UnrealEnginePlugin: NSObject, FlutterPlugin {
 
-    // MARK: - Properties
-
-    private var channel: FlutterMethodChannel?
-    private var controllers: [Int: UnrealEngineController] = [:]
-
-    // MARK: - Constants
-
-    private static let channelName = "gameframework_unreal"
     private static let engineType = "unreal"
-    private static let engineVersion = "5.3.0"
-
-    // MARK: - Plugin Registration
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(
-            name: channelName,
-            binaryMessenger: registrar.messenger()
+        NSLog("UnrealEnginePlugin: Registering plugin...")
+        
+        // Register Unreal factory with the game framework
+        let factory = UnrealEngineFactory()
+        GameEngineRegistry.shared.registerFactory(
+            engineType: engineType,
+            factory: factory
         )
-
-        let instance = UnrealEnginePlugin()
-        instance.channel = channel
-
-        registrar.addMethodCallDelegate(instance, channel: channel)
+        NSLog("UnrealEnginePlugin: Registered factory for engine type '\(engineType)'")
+        
+        // Trigger platform view registration (lazy registration pattern)
+        // This registers the platform view factory with Flutter
+        GameframeworkPlugin.registerPlatformView(engineType: engineType)
+        NSLog("UnrealEnginePlugin: Registered platform view 'com.xraph.gameframework/\(engineType)'")
     }
 
-    // MARK: - Method Call Handler
-
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-        switch call.method {
-        case "getPlatformVersion":
-            handleGetPlatformVersion(result: result)
-
-        case "getEngineType":
-            handleGetEngineType(result: result)
-
-        case "getEngineVersion":
-            handleGetEngineVersion(result: result)
-
-        case "isEngineSupported":
-            handleIsEngineSupported(result: result)
-
-        case "engine#create":
-            handleEngineCreate(call: call, result: result)
-
-        case "engine#pause":
-            handleEnginePause(call: call, result: result)
-
-        case "engine#resume":
-            handleEngineResume(call: call, result: result)
-
-        case "engine#unload":
-            handleEngineUnload(call: call, result: result)
-
-        case "engine#quit":
-            handleEngineQuit(call: call, result: result)
-
-        case "engine#sendMessage":
-            handleSendMessage(call: call, result: result)
-
-        case "engine#sendJsonMessage":
-            handleSendJsonMessage(call: call, result: result)
-
-        case "engine#executeConsoleCommand":
-            handleExecuteConsoleCommand(call: call, result: result)
-
-        case "engine#loadLevel":
-            handleLoadLevel(call: call, result: result)
-
-        case "engine#applyQualitySettings":
-            handleApplyQualitySettings(call: call, result: result)
-
-        case "engine#getQualitySettings":
-            handleGetQualitySettings(call: call, result: result)
-
-        case "engine#isInBackground":
-            handleIsInBackground(call: call, result: result)
-
-        // Binary messaging
-        case "engine#sendBinaryMessage":
-            handleSendBinaryMessage(call: call, result: result)
-
-        case "engine#sendBinaryChunk":
-            handleSendBinaryChunk(call: call, result: result)
-
-        case "engine#sendCompressedMessage":
-            handleSendCompressedMessage(call: call, result: result)
-
-        case "engine#setBinaryChunkSize":
-            handleSetBinaryChunkSize(call: call, result: result)
-
-        default:
-            result(FlutterMethodNotImplemented)
-        }
+    /**
+     * Manual registration method for early initialization
+     *
+     * Call this before the Flutter engine is fully initialized if needed.
+     */
+    public static func registerManually() {
+        let factory = UnrealEngineFactory()
+        GameEngineRegistry.shared.registerFactory(
+            engineType: engineType,
+            factory: factory
+        )
+        NSLog("UnrealEnginePlugin: Manually registered factory")
     }
+}
 
-    // MARK: - Platform Info Handlers
+/**
+ * Factory for creating Unreal engine controllers
+ */
+public class UnrealEngineFactory: NSObject, GameEngineFactory {
 
-    private func handleGetPlatformVersion(result: @escaping FlutterResult) {
-        let version = UIDevice.current.systemVersion
-        result("iOS \(version)")
-    }
-
-    private func handleGetEngineType(result: @escaping FlutterResult) {
-        result(UnrealEnginePlugin.engineType)
-    }
-
-    private func handleGetEngineVersion(result: @escaping FlutterResult) {
-        result(UnrealEnginePlugin.engineVersion)
-    }
-
-    private func handleIsEngineSupported(result: @escaping FlutterResult) {
-        result(true)
-    }
-
-    // MARK: - Engine Lifecycle Handlers
-
-    private func handleEngineCreate(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let viewId = args["viewId"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "viewId is required",
-                details: nil
-            ))
-            return
-        }
-
-        let config = args["config"] as? [String: Any] ?? [:]
-
-        guard let channel = self.channel else {
-            result(FlutterError(
-                code: "NO_CHANNEL",
-                message: "Method channel not available",
-                details: nil
-            ))
-            return
-        }
-
-        let controller = UnrealEngineController(
+    public func createController(
+        frame: CGRect,
+        viewId: Int64,
+        messenger: FlutterBinaryMessenger,
+        config: [String: Any]
+    ) -> GameEnginePlatformView {
+        NSLog("UnrealEngineFactory: Creating controller with viewId \(viewId)")
+        return UnrealEngineController(
+            frame: frame,
             viewId: viewId,
-            channel: channel,
+            messenger: messenger,
             config: config
         )
-
-        let success = controller.create()
-        if success {
-            controllers[viewId] = controller
-        }
-
-        result(success)
-    }
-
-    private func handleEnginePause(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call) else {
-            result(FlutterError(
-                code: "NO_CONTROLLER",
-                message: "Controller not found",
-                details: nil
-            ))
-            return
-        }
-
-        controller.pause()
-        result(nil)
-    }
-
-    private func handleEngineResume(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call) else {
-            result(FlutterError(
-                code: "NO_CONTROLLER",
-                message: "Controller not found",
-                details: nil
-            ))
-            return
-        }
-
-        controller.resume()
-        result(nil)
-    }
-
-    private func handleEngineUnload(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call) else {
-            result(FlutterError(
-                code: "NO_CONTROLLER",
-                message: "Controller not found",
-                details: nil
-            ))
-            return
-        }
-
-        controller.unload()
-        result(nil)
-    }
-
-    private func handleEngineQuit(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let args = call.arguments as? [String: Any],
-              let viewId = args["viewId"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "viewId is required",
-                details: nil
-            ))
-            return
-        }
-
-        if let controller = controllers[viewId] {
-            controller.quit()
-            controllers.removeValue(forKey: viewId)
-        }
-
-        result(nil)
-    }
-
-    // MARK: - Communication Handlers
-
-    private func handleSendMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let target = args["target"] as? String,
-              let method = args["method"] as? String,
-              let data = args["data"] as? String else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "target, method, and data are required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.sendMessage(target: target, method: method, data: data)
-        result(nil)
-    }
-
-    private func handleSendJsonMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let target = args["target"] as? String,
-              let method = args["method"] as? String,
-              let data = args["data"] as? [String: Any] else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "target, method, and data are required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.sendJsonMessage(target: target, method: method, data: data)
-        result(nil)
-    }
-
-    // MARK: - Unreal-Specific Handlers
-
-    private func handleExecuteConsoleCommand(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let command = args["command"] as? String else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "command is required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.executeConsoleCommand(command)
-        result(nil)
-    }
-
-    private func handleLoadLevel(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let levelName = args["levelName"] as? String else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "levelName is required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.loadLevel(levelName)
-        result(nil)
-    }
-
-    private func handleApplyQualitySettings(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let settings = call.arguments as? [String: Any] else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "settings are required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.applyQualitySettings(settings)
-        result(nil)
-    }
-
-    private func handleGetQualitySettings(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call) else {
-            result(FlutterError(
-                code: "NO_CONTROLLER",
-                message: "Controller not found",
-                details: nil
-            ))
-            return
-        }
-
-        if let settings = controller.getQualitySettings() {
-            result(settings)
-        } else {
-            result(FlutterError(
-                code: "SETTINGS_ERROR",
-                message: "Failed to get quality settings",
-                details: nil
-            ))
-        }
-    }
-
-    private func handleIsInBackground(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call) else {
-            result(FlutterError(
-                code: "NO_CONTROLLER",
-                message: "Controller not found",
-                details: nil
-            ))
-            return
-        }
-
-        let isBackground = controller.isInBackground()
-        result(isBackground)
-    }
-
-    // MARK: - Binary Messaging Handlers
-
-    private func handleSendBinaryMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let target = args["target"] as? String,
-              let method = args["method"] as? String,
-              let data = args["data"] as? String,
-              let originalSize = args["originalSize"] as? Int,
-              let compressedSize = args["compressedSize"] as? Int,
-              let isCompressed = args["isCompressed"] as? Bool,
-              let checksum = args["checksum"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "Binary message parameters are required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.sendBinaryMessage(
-            target: target,
-            method: method,
-            data: data,
-            originalSize: originalSize,
-            compressedSize: compressedSize,
-            isCompressed: isCompressed,
-            checksum: checksum
-        )
-        result(nil)
-    }
-
-    private func handleSendBinaryChunk(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let target = args["target"] as? String,
-              let method = args["method"] as? String,
-              let chunkType = args["type"] as? String,
-              let transferId = args["transferId"] as? String,
-              let totalChunks = args["totalChunks"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "Binary chunk parameters are required",
-                details: nil
-            ))
-            return
-        }
-
-        let chunkIndex = args["chunkIndex"] as? Int
-        let totalSize = args["totalSize"] as? Int
-        let data = args["data"] as? String
-        let checksum = args["checksum"] as? Int
-
-        controller.sendBinaryChunk(
-            target: target,
-            method: method,
-            chunkType: chunkType,
-            transferId: transferId,
-            chunkIndex: chunkIndex,
-            totalChunks: totalChunks,
-            totalSize: totalSize,
-            data: data,
-            checksum: checksum
-        )
-        result(nil)
-    }
-
-    private func handleSendCompressedMessage(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let target = args["target"] as? String,
-              let method = args["method"] as? String,
-              let data = args["data"] as? String,
-              let originalSize = args["originalSize"] as? Int,
-              let compressedSize = args["compressedSize"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "Compressed message parameters are required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.sendCompressedMessage(
-            target: target,
-            method: method,
-            data: data,
-            originalSize: originalSize,
-            compressedSize: compressedSize
-        )
-        result(nil)
-    }
-
-    private func handleSetBinaryChunkSize(call: FlutterMethodCall, result: @escaping FlutterResult) {
-        guard let controller = getController(from: call),
-              let args = call.arguments as? [String: Any],
-              let size = args["size"] as? Int else {
-            result(FlutterError(
-                code: "INVALID_ARGUMENTS",
-                message: "size is required",
-                details: nil
-            ))
-            return
-        }
-
-        controller.setBinaryChunkSize(size)
-        result(nil)
-    }
-
-    // MARK: - Helper Methods
-
-    private func getController(from call: FlutterMethodCall) -> UnrealEngineController? {
-        guard let args = call.arguments as? [String: Any],
-              let viewId = args["viewId"] as? Int else {
-            return nil
-        }
-
-        return controllers[viewId]
-    }
-
-    // MARK: - Cleanup
-
-    deinit {
-        // Clean up all controllers
-        for (_, controller) in controllers {
-            controller.quit()
-        }
-        controllers.removeAll()
     }
 }

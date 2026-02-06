@@ -192,7 +192,7 @@ void UFlutterAssetManager::LoadLevel(const FString& LevelName, bool bAbsolute)
         UGameplayStatics::OpenLevel(World, *LevelName, bAbsolute);
         
         // Notify Flutter
-        if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance())
+        if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(World))
         {
             Bridge->SendToFlutter(TEXT("AssetManager"), TEXT("onLevelLoaded"), LevelName);
         }
@@ -211,7 +211,7 @@ void UFlutterAssetManager::LoadLevelAsync(const FString& LevelName)
         LatentInfo.UUID = GetUniqueID();
         LatentInfo.Linkage = 0;
 
-        UGameplayStatics::LoadStreamLevel(World, LevelName, true, false, LatentInfo);
+        UGameplayStatics::LoadStreamLevel(World, FName(*LevelName), true, false, LatentInfo);
     }
 }
 
@@ -260,7 +260,7 @@ void UFlutterAssetManager::UnloadLevel(const FString& LevelName)
         LatentInfo.UUID = GetUniqueID();
         LatentInfo.Linkage = 1;
 
-        UGameplayStatics::UnloadStreamLevel(World, LevelName, LatentInfo, false);
+        UGameplayStatics::UnloadStreamLevel(World, FName(*LevelName), LatentInfo, false);
     }
 }
 
@@ -370,7 +370,8 @@ void UFlutterAssetManager::ResetStatistics()
 
 void UFlutterAssetManager::NotifyFlutterProgress(const FFlutterAssetProgress& Progress)
 {
-    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance())
+    UWorld* World = GEngine ? GEngine->GetWorldContexts()[0].World() : nullptr;
+    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(World))
     {
         FString ProgressJson = FString::Printf(
             TEXT("{\"total\":%d,\"loaded\":%d,\"failed\":%d,\"progress\":%.2f}"),
@@ -385,7 +386,8 @@ void UFlutterAssetManager::NotifyFlutterProgress(const FFlutterAssetProgress& Pr
 
 void UFlutterAssetManager::NotifyFlutterAssetLoaded(const FString& AssetPath)
 {
-    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance())
+    UWorld* World = GEngine ? GEngine->GetWorldContexts()[0].World() : nullptr;
+    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(World))
     {
         Bridge->SendToFlutter(TEXT("AssetManager"), TEXT("onAssetLoaded"), AssetPath);
     }
@@ -393,7 +395,8 @@ void UFlutterAssetManager::NotifyFlutterAssetLoaded(const FString& AssetPath)
 
 void UFlutterAssetManager::NotifyFlutterAssetFailed(const FString& AssetPath, const FString& ErrorMessage)
 {
-    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance())
+    UWorld* World = GEngine ? GEngine->GetWorldContexts()[0].World() : nullptr;
+    if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(World))
     {
         FString ErrorJson = FString::Printf(TEXT("{\"path\":\"%s\",\"error\":\"%s\"}"), *AssetPath, *ErrorMessage);
         Bridge->SendToFlutter(TEXT("AssetManager"), TEXT("onAssetFailed"), ErrorJson);

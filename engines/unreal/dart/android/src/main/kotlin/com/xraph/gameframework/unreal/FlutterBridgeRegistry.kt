@@ -250,8 +250,8 @@ object FlutterBridgeRegistry {
             return false
         }
         
-        Log.d(TAG, "Controller found, forwarding to onUnrealMessage")
-        controller.onUnrealMessage(target, method, data)
+        Log.d(TAG, "Controller found, forwarding to onMessageFromUnreal")
+        controller.onMessageFromUnreal(target, method, data)
         Log.d(TAG, "<<< Message forwarded successfully")
         return true
     }
@@ -273,7 +273,7 @@ object FlutterBridgeRegistry {
             return false
         }
         
-        controller.onUnrealMessage(target, method, data)
+        controller.onMessageFromUnreal(target, method, data)
         return true
     }
     
@@ -289,7 +289,9 @@ object FlutterBridgeRegistry {
     @JvmStatic
     fun sendBinaryToFlutter(target: String, method: String, data: String): Boolean {
         val controller = _sharedController ?: return false
-        controller.onBinaryMessageFromUnreal(target, method, data)
+        // Convert base64 string to ByteArray
+        val byteData = android.util.Base64.decode(data, android.util.Base64.DEFAULT)
+        controller.onBinaryMessageFromUnreal(target, method, byteData, false, 0)
         return true
     }
     

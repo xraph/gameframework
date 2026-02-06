@@ -34,15 +34,141 @@ class UnrealController implements GameEngineController {
   bool _isPaused = false;
   bool _isDisposed = false;
 
+  final EventChannel _eventChannel;
+  StreamSubscription? _eventSubscription;
+  bool _eventStreamSetup = false;
+
   UnrealController(int viewId)
-      : _channel = MethodChannel('gameframework_unreal_$viewId'),
+      : _channel = MethodChannel('com.xraph.gameframework/engine_$viewId'),
+        _eventChannel = EventChannel('com.xraph.gameframework/events_$viewId'),
         _eventController = StreamController<GameEngineEvent>.broadcast(),
         _messageController = StreamController<GameEngineMessage>.broadcast(),
         _sceneController = StreamController<GameSceneLoaded>.broadcast(),
         _binaryProgressController =
             StreamController<BinaryTransferProgress>.broadcast() {
-    _channel.setMethodCallHandler(_handleMethodCall);
     _chunkAssembler = _binaryProtocol.createAssembler();
+    // Defer event stream setup to ensure platform view is created
+    scheduleMicrotask(_setupEventStream);
+  }
+
+  /// Set up event stream with explicit native confirmation
+  Future<void> _setupEventStream(
+      {int attempt = 0, int maxAttempts = 10}) async {
+    if (_isDisposed || _eventStreamSetup) return;
+
+    try {
+      // On first attempt, add a small delay to give iOS time to fully set up
+      // the platform view and method channel handler
+      if (attempt == 0) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      // Request native side to register event handler
+      final setupResult = await _channel.invokeMethod<bool>('events#setup');
+
+      if (setupResult != true) {
+        throw Exception('Native event setup returned false or null');
+      }
+
+      _eventStreamSetup = true;
+
+      // Native handler is now guaranteed to be registered
+      _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
+        _handleNativeEvent,
+        onError: (error) {
+          debugPrint('UnrealController: Event stream error: $error');
+        },
+        cancelOnError: false,
+      );
+    } catch (e) {
+      if (attempt < maxAttempts && !_isDisposed) {
+        final delay = Duration(milliseconds: 100 * (attempt + 1));
+        debugPrint(
+            'UnrealController: Event setup failed, retrying in ${delay.inMilliseconds}ms (attempt ${attempt + 1}/$maxAttempts)');
+        await Future.delayed(delay);
+        await _setupEventStream(attempt: attempt + 1, maxAttempts: maxAttempts);
+      } else {
+        debugPrint(
+            'UnrealController: Failed to setup event stream after $maxAttempts attempts: $e');
+      }
+    }
+  }
+
+  void _handleNativeEvent(dynamic event) {
+    if (event is! Map) return;
+
+    final eventName = event['event'] as String?;
+    final data = event['data'];
+
+    switch (eventName) {
+      case 'onMessage':
+        _handleMessage(data);
+        break;
+      case 'onBinaryMessage':
+        _handleBinaryMessage(data);
+        break;
+      case 'onBinaryChunk':
+        _handleBinaryChunk(data);
+        break;
+      case 'onBinaryProgress':
+        _handleBinaryProgress(data);
+        break;
+      case 'onSceneLoaded':
+        _handleLevelLoaded(data);
+        break;
+      case 'onCreated':
+        _isReady = true;
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.created,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onLoaded':
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.loaded,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onPaused':
+        _isPaused = true;
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.paused,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onResumed':
+        _isPaused = false;
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.resumed,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onUnloaded':
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.unloaded,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onDestroyed':
+        _isReady = false;
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.destroyed,
+          timestamp: DateTime.now(),
+        ));
+        break;
+      case 'onError':
+        final message =
+            data is Map ? data['message'] as String? : data?.toString();
+        _addEvent(GameEngineEvent(
+          type: GameEngineEventType.error,
+          timestamp: DateTime.now(),
+          message: message,
+          error: message,
+        ));
+        break;
+      default:
+        debugPrint('UnrealController: Unknown event: $eventName');
+    }
   }
 
   @override
@@ -79,7 +205,7 @@ class UnrealController implements GameEngineController {
   // MARK: - Lifecycle Methods
 
   @override
-  Future<bool> create() async {
+  Future<bool> create({int attempt = 0, int maxAttempts = 10}) async {
     _throwIfDisposed();
 
     try {
@@ -98,8 +224,29 @@ class UnrealController implements GameEngineController {
 
       return _isReady;
     } catch (e) {
+      // Handle MissingPluginException - platform view not created yet
+      if (e is MissingPluginException && attempt < maxAttempts) {
+        // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms...
+        final delayMs = 50 * (1 << attempt);
+        if (attempt == 0) {
+          // First attempt failure is expected, don't log
+        } else if (attempt < 3) {
+          debugPrint(
+              'Platform view not ready for create(), retrying in ${delayMs}ms (attempt ${attempt + 1}/$maxAttempts)');
+        } else {
+          debugPrint(
+              'Warning: Platform view still not ready for create() after $attempt attempts, retrying in ${delayMs}ms');
+        }
+
+        await Future.delayed(Duration(milliseconds: delayMs));
+        return create(attempt: attempt + 1, maxAttempts: maxAttempts);
+      }
+
+      // Fatal error or max retries exceeded
       throw EngineCommunicationException(
-        'Failed to create Unreal engine: $e',
+        attempt >= maxAttempts
+            ? 'Platform view creation timeout after $maxAttempts attempts'
+            : 'Failed to create Unreal engine: $e',
         target: 'UnrealController',
         method: 'create',
         engineType: engineType,
@@ -603,32 +750,7 @@ class UnrealController implements GameEngineController {
     }
   }
 
-  // MARK: - Method Call Handler
-
-  Future<void> _handleMethodCall(MethodCall call) async {
-    switch (call.method) {
-      case 'onMessage':
-        _handleMessage(call.arguments);
-        break;
-      case 'onBinaryMessage':
-        _handleBinaryMessage(call.arguments);
-        break;
-      case 'onBinaryChunk':
-        _handleBinaryChunk(call.arguments);
-        break;
-      case 'onBinaryProgress':
-        _handleBinaryProgress(call.arguments);
-        break;
-      case 'onLevelLoaded':
-        _handleLevelLoaded(call.arguments);
-        break;
-      case 'onEvent':
-        _handleEvent(call.arguments);
-        break;
-      default:
-        debugPrint('UnrealController: Unknown method call: ${call.method}');
-    }
-  }
+  // MARK: - Event Handlers
 
   void _handleMessage(dynamic arguments) {
     if (arguments is Map) {
@@ -741,42 +863,6 @@ class UnrealController implements GameEngineController {
     }
   }
 
-  void _handleEvent(dynamic arguments) {
-    if (arguments is Map) {
-      final type = _parseEventType(arguments['type'] as String?);
-
-      final event = GameEngineEvent(
-        type: type,
-        timestamp: DateTime.now(),
-        message: arguments['message'] as String?,
-        error: arguments['error'],
-      );
-
-      _addEvent(event);
-    }
-  }
-
-  GameEngineEventType _parseEventType(String? typeString) {
-    switch (typeString) {
-      case 'created':
-        return GameEngineEventType.created;
-      case 'loaded':
-        return GameEngineEventType.loaded;
-      case 'paused':
-        return GameEngineEventType.paused;
-      case 'resumed':
-        return GameEngineEventType.resumed;
-      case 'unloaded':
-        return GameEngineEventType.unloaded;
-      case 'destroyed':
-        return GameEngineEventType.destroyed;
-      case 'error':
-        return GameEngineEventType.error;
-      default:
-        return GameEngineEventType.error;
-    }
-  }
-
   void _addEvent(GameEngineEvent event) {
     if (!_isDisposed) {
       _eventController.add(event);
@@ -820,6 +906,10 @@ class UnrealController implements GameEngineController {
     if (_isDisposed) return;
 
     _isDisposed = true;
+
+    // Cancel event subscription first
+    await _eventSubscription?.cancel();
+    _eventSubscription = null;
 
     await _eventController.close();
     await _messageController.close();

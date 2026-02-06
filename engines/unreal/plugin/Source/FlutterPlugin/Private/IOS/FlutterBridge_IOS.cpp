@@ -28,6 +28,19 @@ void FlutterBridge_SendToFlutter_iOS(const FString& Target, const FString& Metho
 }
 
 /**
+ * Send binary data to Flutter via iOS
+ * Called from AFlutterBridge::SendBinaryToFlutter()
+ */
+void FlutterBridge_SendBinaryToFlutter_iOS(const FString& Target, const FString& Method, const TArray<uint8>& Data, int32 Checksum)
+{
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_iOS] SendBinaryToFlutter: Target=%s, Method=%s, Size=%d, Checksum=%d"), 
+		*Target, *Method, Data.Num(), Checksum);
+	
+	// TODO: Implement actual binary communication with Flutter
+	// This would typically use method channels via the Flutter engine
+}
+
+/**
  * Set the FlutterBridge instance
  * Called from AFlutterBridge::BeginPlay()
  */

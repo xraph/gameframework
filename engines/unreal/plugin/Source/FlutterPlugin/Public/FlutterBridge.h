@@ -250,6 +250,42 @@ public:
 	 */
 	void OnEngineQuit();
 
+	// ============================================================
+	// MARK: - Surface Events (Android)
+	// ============================================================
+
+	/**
+	 * Called when the rendering surface is ready
+	 * The surface is created by Flutter's SurfaceView and passed to native code
+	 * @param Width - Surface width in pixels
+	 * @param Height - Surface height in pixels
+	 */
+	void OnSurfaceReady(int32 Width, int32 Height);
+
+	/**
+	 * Called when the surface dimensions change
+	 * @param Width - New surface width
+	 * @param Height - New surface height
+	 */
+	void OnSurfaceSizeChanged(int32 Width, int32 Height);
+
+	/**
+	 * Called when the surface is destroyed
+	 */
+	void OnSurfaceDestroyed();
+
+	/**
+	 * Get the current surface dimensions
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flutter|Surface")
+	void GetSurfaceSize(int32& OutWidth, int32& OutHeight) const;
+
+	/**
+	 * Check if surface is ready for rendering
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Flutter|Surface")
+	bool IsSurfaceReady() const;
+
 	/**
 	 * Blueprint events for lifecycle
 	 */
@@ -285,6 +321,11 @@ private:
 
 	// Binary transfer chunk size (default 64KB)
 	int32 BinaryChunkSize;
+
+	// Surface state (Android)
+	bool bSurfaceReady;
+	int32 SurfaceWidth;
+	int32 SurfaceHeight;
 
 	// Active chunked transfers
 	struct FChunkedTransfer

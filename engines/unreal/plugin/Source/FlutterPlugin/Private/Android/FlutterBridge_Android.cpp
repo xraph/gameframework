@@ -6,7 +6,14 @@
 
 #include "Android/AndroidJNI.h"
 #include "Android/AndroidApplication.h"
+#include "Android/AndroidWindow.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Slate/SceneViewport.h"
+#include "RenderingThread.h"
 #include <jni.h>
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
 
 // Global reference to the Java UnrealEngineController instance
 static jobject GUnrealEngineControllerInstance = nullptr;
@@ -18,6 +25,11 @@ static jmethodID GOnLevelLoadedMethodID = nullptr;
 
 // Reference to FlutterBridge instance
 static AFlutterBridge* GFlutterBridgeInstance = nullptr;
+
+// Native window for rendering (from Flutter's SurfaceView)
+static ANativeWindow* GNativeWindow = nullptr;
+static int32 GSurfaceWidth = 0;
+static int32 GSurfaceHeight = 0;
 
 // ============================================================
 // MARK: - Helper Functions
@@ -33,8 +45,9 @@ jstring FStringToJString(JNIEnv* Env, const FString& String)
 		return nullptr;
 	}
 
-	const char* UTFString = TCHAR_TO_UTF8(*String);
-	return Env->NewStringUTF(UTFString);
+	// Use FTCHARToUTF8 converter to avoid dangling pointer from TCHAR_TO_UTF8 macro
+	FTCHARToUTF8 Converter(*String);
+	return Env->NewStringUTF(Converter.Get());
 }
 
 /**
@@ -208,6 +221,9 @@ extern "C"
 
 	/**
 	 * Get the native Unreal view
+	 * 
+	 * On Android, Unreal uses a NativeActivity with its own SurfaceView.
+	 * We try to get the content view from the current activity's window.
 	 */
 	JNIEXPORT jobject JNICALL
 	Java_com_xraph_gameframework_unreal_UnrealEngineController_nativeGetView(
@@ -215,9 +231,212 @@ extern "C"
 	{
 		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] nativeGetView called"));
 
-		// On Android, Unreal Engine manages its own view
-		// Return null for now - the view is handled by Unreal's SurfaceView
+		// Get the main activity from AndroidApplication
+		jobject Activity = FAndroidApplication::GetGameActivityThis();
+		if (!Activity)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] No game activity found"));
+			return nullptr;
+		}
+
+		// Try to get the content view from the activity's window
+		// Activity.getWindow().getDecorView()
+		jclass ActivityClass = Env->GetObjectClass(Activity);
+		if (!ActivityClass)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] Failed to get activity class"));
+			return nullptr;
+		}
+
+		jmethodID GetWindowMethod = Env->GetMethodID(ActivityClass, "getWindow", "()Landroid/view/Window;");
+		if (!GetWindowMethod)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] Failed to get getWindow method"));
+			Env->DeleteLocalRef(ActivityClass);
+			return nullptr;
+		}
+
+		jobject Window = Env->CallObjectMethod(Activity, GetWindowMethod);
+		if (!Window)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] Failed to get window"));
+			Env->DeleteLocalRef(ActivityClass);
+			return nullptr;
+		}
+
+		jclass WindowClass = Env->GetObjectClass(Window);
+		jmethodID GetDecorViewMethod = Env->GetMethodID(WindowClass, "getDecorView", "()Landroid/view/View;");
+		if (!GetDecorViewMethod)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] Failed to get getDecorView method"));
+			Env->DeleteLocalRef(WindowClass);
+			Env->DeleteLocalRef(Window);
+			Env->DeleteLocalRef(ActivityClass);
+			return nullptr;
+		}
+
+		jobject DecorView = Env->CallObjectMethod(Window, GetDecorViewMethod);
+		
+		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Got decor view: %p"), DecorView);
+
+		// Clean up local references
+		Env->DeleteLocalRef(WindowClass);
+		Env->DeleteLocalRef(Window);
+		Env->DeleteLocalRef(ActivityClass);
+
+		// Return a global reference to the view
+		if (DecorView)
+		{
+			return Env->NewGlobalRef(DecorView);
+		}
+
 		return nullptr;
+	}
+
+	/**
+	 * Set the rendering surface from Kotlin's SurfaceView
+	 * 
+	 * This is the key function for Flutter integration - Kotlin creates a SurfaceView
+	 * and passes the Surface to native code. We convert it to ANativeWindow which
+	 * can be used by Unreal for rendering.
+	 * 
+	 * @param Surface The Android Surface object, or null to clear
+	 */
+	JNIEXPORT void JNICALL
+	Java_com_xraph_gameframework_unreal_UnrealEngineController_nativeSetSurface(
+		JNIEnv* Env, jobject Obj, jobject Surface)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] nativeSetSurface called"));
+
+		// Release previous native window if any
+		if (GNativeWindow != nullptr)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Releasing previous native window"));
+			ANativeWindow_release(GNativeWindow);
+			GNativeWindow = nullptr;
+		}
+
+		if (Surface != nullptr)
+		{
+			// Get ANativeWindow from the Surface
+			GNativeWindow = ANativeWindow_fromSurface(Env, Surface);
+			
+			if (GNativeWindow != nullptr)
+			{
+				// Get surface dimensions
+				GSurfaceWidth = ANativeWindow_getWidth(GNativeWindow);
+				GSurfaceHeight = ANativeWindow_getHeight(GNativeWindow);
+				
+				UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Native window created: %dx%d"), 
+					GSurfaceWidth, GSurfaceHeight);
+				
+					// Configure Unreal to render to this window
+				// This is the key integration point - tell Unreal's Android window system
+				// about our external surface
+				
+				// Acquire an additional reference since Unreal will manage this
+				ANativeWindow_acquire(GNativeWindow);
+				
+				// Try to set the hardware window for rendering
+				UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Setting hardware window..."));
+				
+				// Check if window is different from current
+				void* CurrentWindow = FAndroidWindow::GetHardwareWindow_EventThread();
+				if (CurrentWindow != GNativeWindow)
+				{
+					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Calling SetHardwareWindow_EventThread"));
+					
+					// Set the hardware window - this tells Unreal's RHI where to render
+					FAndroidWindow::SetHardwareWindow_EventThread(GNativeWindow);
+					
+					// Set window dimensions to trigger proper initialization
+					FAndroidWindow::SetWindowDimensions_EventThread(GNativeWindow);
+					
+					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Hardware window set: %dx%d"), 
+						GSurfaceWidth, GSurfaceHeight);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Hardware window already set, updating dimensions"));
+					FAndroidWindow::SetWindowDimensions_EventThread(GNativeWindow);
+				}
+				
+				// Notify FlutterBridge if available
+				if (GFlutterBridgeInstance)
+				{
+					GFlutterBridgeInstance->OnSurfaceReady(GSurfaceWidth, GSurfaceHeight);
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[FlutterBridge_Android] Failed to get native window from surface"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Surface cleared"));
+			GSurfaceWidth = 0;
+			GSurfaceHeight = 0;
+			
+			// Clear the hardware window
+			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Clearing hardware window"));
+			FAndroidWindow::SetHardwareWindow_EventThread(nullptr);
+			
+			// Notify FlutterBridge if available
+			if (GFlutterBridgeInstance)
+			{
+				GFlutterBridgeInstance->OnSurfaceDestroyed();
+			}
+		}
+	}
+
+	/**
+	 * Handle surface dimension changes
+	 * 
+	 * Called when the SurfaceView dimensions change (e.g., rotation, resize)
+	 * 
+	 * @param Width New surface width
+	 * @param Height New surface height
+	 */
+	JNIEXPORT void JNICALL
+	Java_com_xraph_gameframework_unreal_UnrealEngineController_nativeSurfaceChanged(
+		JNIEnv* Env, jobject Obj, jint Width, jint Height)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] nativeSurfaceChanged: %dx%d"), Width, Height);
+
+		GSurfaceWidth = Width;
+		GSurfaceHeight = Height;
+
+		if (GNativeWindow != nullptr)
+		{
+			// Update the native window buffer geometry if needed
+			// ANativeWindow_setBuffersGeometry(GNativeWindow, Width, Height, WINDOW_FORMAT_RGBA_8888);
+			
+			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Surface dimensions updated"));
+		}
+
+		// Notify FlutterBridge of size change
+		if (GFlutterBridgeInstance)
+		{
+			GFlutterBridgeInstance->OnSurfaceSizeChanged(Width, Height);
+		}
+	}
+
+	/**
+	 * Get the current native window (for use by other Unreal systems)
+	 */
+	ANativeWindow* FlutterBridge_GetNativeWindow()
+	{
+		return GNativeWindow;
+	}
+
+	/**
+	 * Get the current surface dimensions
+	 */
+	void FlutterBridge_GetSurfaceSize(int32& OutWidth, int32& OutHeight)
+	{
+		OutWidth = GSurfaceWidth;
+		OutHeight = GSurfaceHeight;
 	}
 
 	/**
@@ -468,6 +687,50 @@ void FlutterBridge_SendToFlutter_Android(const FString& Target, const FString& M
 
 	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Message sent to Flutter: Target=%s, Method=%s"),
 		*Target, *Method);
+}
+
+/**
+ * Send binary data to Flutter via Java
+ * Called from AFlutterBridge::SendBinaryToFlutter()
+ */
+void FlutterBridge_SendBinaryToFlutter_Android(const FString& Target, const FString& Method, const TArray<uint8>& Data, int32 Checksum)
+{
+	if (!GUnrealEngineControllerInstance)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FlutterBridge_Android] Cannot send binary to Flutter: Java instance not initialized"));
+		return;
+	}
+
+	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
+	if (!Env)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[FlutterBridge_Android] Failed to get JNI environment"));
+		return;
+	}
+
+	// Convert strings
+	jstring jTarget = FStringToJString(Env, Target);
+	jstring jMethod = FStringToJString(Env, Method);
+
+	// Create byte array
+	jbyteArray jData = Env->NewByteArray(Data.Num());
+	if (jData && Data.Num() > 0)
+	{
+		Env->SetByteArrayRegion(jData, 0, Data.Num(), reinterpret_cast<const jbyte*>(Data.GetData()));
+	}
+
+	// TODO: Call Java method for binary data once implemented in UnrealEngineController
+	// For now, log the binary data info
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Binary data to Flutter: Target=%s, Method=%s, Size=%d, Checksum=%d"),
+		*Target, *Method, Data.Num(), Checksum);
+
+	// Clean up local references
+	Env->DeleteLocalRef(jTarget);
+	Env->DeleteLocalRef(jMethod);
+	if (jData)
+	{
+		Env->DeleteLocalRef(jData);
+	}
 }
 
 /**

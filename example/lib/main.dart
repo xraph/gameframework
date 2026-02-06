@@ -139,9 +139,10 @@ class UnityExampleScreen extends StatefulWidget {
   State<UnityExampleScreen> createState() => _UnityExampleScreenState();
 }
 
-class _UnityExampleScreenState extends State<UnityExampleScreen> {
+class _UnityExampleScreenState extends State<UnityExampleScreen>
+    with SingleTickerProviderStateMixin {
   GameEngineController? _controller;
-  double _rotationSpeed = 50.0;
+  double _targetSpeed = 50.0;
   String _rotationAxis = 'Y';
   bool _isReady = false;
   String _lastMessage = 'Initializing...';
@@ -149,6 +150,42 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   double _currentSpeed = 0;
   double _currentRpm = 0;
   final List<String> _logs = [];
+
+  // UI State
+  bool _isPanelExpanded = false;
+  bool _showMiniHud = true;
+  late AnimationController _panelAnimationController;
+  late Animation<double> _panelAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _panelAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _panelAnimation = CurvedAnimation(
+      parent: _panelAnimationController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _panelAnimationController.dispose();
+    super.dispose();
+  }
+
+  void _togglePanel() {
+    setState(() {
+      _isPanelExpanded = !_isPanelExpanded;
+      if (_isPanelExpanded) {
+        _panelAnimationController.forward();
+      } else {
+        _panelAnimationController.reverse();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,26 +214,18 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               ),
             ),
 
-            // Overlay UI - Top info card
-            Positioned(
-              top: 50,
-              left: 20,
-              right: 20,
-              child: _buildInfoCard(),
-            ),
+            // Mini HUD (top-left, always visible when panel is collapsed)
+            if (_showMiniHud && !_isPanelExpanded && _isReady)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 12,
+                child: _buildMiniHud(),
+              ),
 
-            // Overlay UI - Bottom controls
+            // Back button (top-left)
             Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: _buildControlPanel(),
-            ),
-
-            // Back button
-            Positioned(
-              top: 40,
-              left: 10,
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 12,
               child: SafeArea(
                 child: IconButton(
                   icon: const Icon(Icons.arrow_back,
@@ -209,10 +238,25 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
               ),
             ),
 
-            // Status indicator
+            // Expandable Control Panel
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _buildExpandablePanel(),
+            ),
+
+            // Floating Action Buttons (right side)
+            Positioned(
+              right: 16,
+              bottom: _isPanelExpanded ? 320 : 100,
+              child: _buildFloatingActions(),
+            ),
+
+            // Loading overlay
             if (!_isReady)
               Container(
-                color: Colors.black87,
+                // color: Colors.black87,
                 child: const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -237,36 +281,48 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     );
   }
 
-  Widget _buildInfoCard() {
-    return Card(
-      color: Colors.black.withValues(alpha: 0.85),
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+  Widget _buildMiniHud() {
+    return GestureDetector(
+      onTap: _togglePanel,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white24, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _buildInfoRow(
+            Icon(
               Icons.speed,
-              'Speed',
-              '${_currentSpeed.toStringAsFixed(0)}°/s (${_currentRpm.toStringAsFixed(1)} RPM)',
-              Colors.amber,
+              color: Colors.amber,
+              size: 18,
             ),
-            const Divider(color: Colors.white24, height: 20),
-            _buildInfoRow(
-              Icons.message,
-              'Message',
-              _lastMessage,
-              Colors.blue,
+            const SizedBox(width: 6),
+            Text(
+              '${_currentSpeed.abs().toStringAsFixed(0)}°/s',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const Divider(color: Colors.white24, height: 20),
-            _buildInfoRow(
-              _direction.contains('FROM')
-                  ? Icons.arrow_back
-                  : Icons.arrow_forward,
-              'Direction',
-              _direction,
-              _direction.contains('FROM') ? Colors.green : Colors.orange,
+            const SizedBox(width: 8),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color:
+                    _direction.contains('UNITY') ? Colors.green : Colors.orange,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.touch_app,
+              color: Colors.blue.withValues(alpha: 0.7),
+              size: 16,
             ),
           ],
         ),
@@ -274,264 +330,333 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
-    return Row(
+  Widget _buildFloatingActions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 28),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        // Toggle panel button
+        FloatingActionButton(
+          heroTag: 'toggle',
+          mini: true,
+          backgroundColor: Colors.blueGrey.withValues(alpha: 0.9),
+          onPressed: _togglePanel,
+          child: AnimatedRotation(
+            turns: _isPanelExpanded ? 0.5 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: const Icon(Icons.expand_less, color: Colors.white),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Quick actions when panel is collapsed
+        if (!_isPanelExpanded) ...[
+          FloatingActionButton(
+            heroTag: 'color',
+            mini: true,
+            backgroundColor: Colors.purple.withValues(alpha: 0.9),
+            onPressed: _isReady ? _randomColor : null,
+            child: const Icon(Icons.palette, color: Colors.white, size: 20),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'reset',
+            mini: true,
+            backgroundColor: Colors.orange.withValues(alpha: 0.9),
+            onPressed: _isReady ? _reset : null,
+            child: const Icon(Icons.refresh, color: Colors.white, size: 20),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildExpandablePanel() {
+    return AnimatedBuilder(
+      animation: _panelAnimation,
+      builder: (context, child) {
+        return Container(
+          height: 80 + (_panelAnimation.value * 220),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.85),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildControlPanel() {
-    return Card(
-      color: Colors.black.withValues(alpha: 0.9),
-      elevation: 12,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Title
-            const Text(
-              '🎮 Cube Controls',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+          child: Column(
+            children: [
+              // Handle bar
+              GestureDetector(
+                onTap: _togglePanel,
+                onVerticalDragEnd: (details) {
+                  if (details.primaryVelocity! < 0) {
+                    if (!_isPanelExpanded) _togglePanel();
+                  } else if (details.primaryVelocity! > 0) {
+                    if (_isPanelExpanded) _togglePanel();
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  color: Colors.transparent,
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white38,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
 
-            // Speed slider
-            _buildSliderControl(
-              'Rotation Speed',
-              _rotationSpeed,
-              -180,
-              180,
-              (value) {
-                setState(() => _rotationSpeed = value);
-                _sendSpeed(value);
-              },
-              Icons.threesixty,
-            ),
+              // Compact speed control (always visible)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Icon(Icons.speed, color: Colors.amber, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 4,
+                          thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 8),
+                        ),
+                        child: Slider(
+                          value: _targetSpeed,
+                          min: -180,
+                          max: 180,
+                          onChanged: _isReady
+                              ? (value) {
+                                  setState(() => _targetSpeed = value);
+                                  _sendSpeed(value);
+                                }
+                              : null,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 60,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${_targetSpeed.toStringAsFixed(0)}°',
+                        style: const TextStyle(
+                          color: Colors.blueAccent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-            const SizedBox(height: 16),
-
-            // Axis selector
-            _buildAxisSelector(),
-
-            const SizedBox(height: 20),
-
-            // Action buttons
-            Row(
-              children: [
+              // Expanded content
+              if (_panelAnimation.value > 0.1)
                 Expanded(
-                  child: _buildActionButton(
-                    'Reset',
-                    Icons.refresh,
-                    Colors.orange,
-                    _reset,
+                  child: Opacity(
+                    opacity: _panelAnimation.value,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                      child: Column(
+                        children: [
+                          // Axis selector
+                          _buildCompactAxisSelector(),
+                          const SizedBox(height: 16),
+
+                          // Info row
+                          _buildInfoRow(),
+                          const SizedBox(height: 16),
+
+                          // Action buttons
+                          _buildActionButtons(),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildActionButton(
-                    'Get State',
-                    Icons.analytics,
-                    Colors.blue,
-                    _getState,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildActionButton(
-                    'Random Color',
-                    Icons.palette,
-                    Colors.purple,
-                    _randomColor,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSliderControl(
-    String label,
-    double value,
-    double min,
-    double max,
-    ValueChanged<double> onChanged,
-    IconData icon,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildCompactAxisSelector() {
+    return Row(
       children: [
-        Row(
-          children: [
-            Icon(icon, color: Colors.blueAccent, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.blueAccent.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${value.toStringAsFixed(0)}°/s',
-                style: const TextStyle(
-                  color: Colors.blueAccent,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
+        const Icon(Icons.loop, color: Colors.greenAccent, size: 18),
+        const SizedBox(width: 8),
+        const Text(
+          'Axis',
+          style: TextStyle(color: Colors.white70, fontSize: 13),
         ),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          divisions: (max - min).toInt(),
-          onChanged: _isReady ? onChanged : null,
-        ),
+        const Spacer(),
+        ...['X', 'Y', 'Z', 'All'].map((axis) => Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: _buildCompactAxisButton(axis),
+            )),
       ],
     );
   }
 
-  Widget _buildAxisSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Row(
-          children: [
-            Icon(Icons.loop, color: Colors.greenAccent, size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Rotation Axis',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _buildAxisButton('X', Colors.red),
-            const SizedBox(width: 8),
-            _buildAxisButton('Y', Colors.green),
-            const SizedBox(width: 8),
-            _buildAxisButton('Z', Colors.blue),
-            const SizedBox(width: 8),
-            _buildAxisButton('All', Colors.purple),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAxisButton(String axis, Color color) {
+  Widget _buildCompactAxisButton(String axis) {
     final isSelected = _rotationAxis == axis;
-    return Expanded(
-      child: Material(
-        color: isSelected ? color : color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: _isReady
-              ? () {
-                  setState(() => _rotationAxis = axis);
-                  _setAxis(axis);
-                }
-              : null,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              axis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isSelected ? Colors.white : color,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+    final color = axis == 'X'
+        ? Colors.red
+        : axis == 'Y'
+            ? Colors.green
+            : axis == 'Z'
+                ? Colors.blue
+                : Colors.purple;
+
+    return GestureDetector(
+      onTap: _isReady
+          ? () {
+              setState(() => _rotationAxis = axis);
+              _setAxis(axis);
+            }
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : color.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          axis,
+          style: TextStyle(
+            color: isSelected ? Colors.white : color,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildActionButton(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed,
-  ) {
+  Widget _buildInfoRow() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _buildInfoItem(
+            Icons.speed,
+            'Current',
+            '${_currentSpeed.abs().toStringAsFixed(0)}°/s',
+            Colors.amber,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.white24,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          _buildInfoItem(
+            Icons.rotate_right,
+            'RPM',
+            _currentRpm.abs().toStringAsFixed(1),
+            Colors.cyan,
+          ),
+          Container(
+            width: 1,
+            height: 30,
+            color: Colors.white24,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          Expanded(
+            child: _buildInfoItem(
+              _direction.contains('UNITY')
+                  ? Icons.arrow_back
+                  : Icons.arrow_forward,
+              'Status',
+              _lastMessage,
+              _direction.contains('UNITY') ? Colors.green : Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(
+      IconData icon, String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(color: Colors.white54, fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+            child: _buildCompactButton(
+                'Reset', Icons.refresh, Colors.orange, _reset)),
+        const SizedBox(width: 8),
+        Expanded(
+            child: _buildCompactButton(
+                'State', Icons.analytics, Colors.blue, _getState)),
+        const SizedBox(width: 8),
+        Expanded(
+            child: _buildCompactButton(
+                'Color', Icons.palette, Colors.purple, _randomColor)),
+      ],
+    );
+  }
+
+  Widget _buildCompactButton(
+      String label, IconData icon, Color color, VoidCallback onPressed) {
     return ElevatedButton(
       onPressed: _isReady ? onPressed : null,
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 4,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
-      child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 24),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Icon(icon, size: 18),
+          const SizedBox(width: 6),
+          Text(label,
+              style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -552,18 +677,22 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
     if (method == 'onReady') {
       setState(() {
         _isReady = true;
-        _lastMessage = 'Unity cube demo ready!';
-        _direction = '← FROM UNITY';
+        _lastMessage = 'Unity ready!';
+        _direction = '← UNITY';
       });
-    } else if (method == 'onSpeedChanged') {
+    } else if (method == 'onSpeedChanged' || method == 'onCurrentSpeed') {
       try {
         final data = message.asJson();
         if (data != null) {
           setState(() {
             _currentSpeed = (data['speed'] as num?)?.toDouble() ?? 0;
             _currentRpm = (data['rpm'] as num?)?.toDouble() ?? 0;
-            _lastMessage = 'Speed updated';
-            _direction = '← FROM UNITY';
+            // Check if this is a touch-initiated speed change
+            final isTouch = data['isTouch'] as bool? ?? false;
+            if (isTouch) {
+              _lastMessage = 'Touch spin!';
+            }
+            _direction = '← UNITY';
           });
         }
       } catch (e) {
@@ -571,15 +700,15 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
       }
     } else if (method == 'onReset') {
       setState(() {
-        _rotationSpeed = 50;
+        _targetSpeed = 50;
         _rotationAxis = 'Y';
-        _lastMessage = 'Cube reset';
-        _direction = '← FROM UNITY';
+        _lastMessage = 'Reset';
+        _direction = '← UNITY';
       });
     } else if (method == 'onState') {
       setState(() {
         _lastMessage = 'State received';
-        _direction = '← FROM UNITY';
+        _direction = '← UNITY';
       });
     }
   }
@@ -591,8 +720,8 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
   void _sendSpeed(double speed) {
     _controller?.sendMessage('GameFrameworkDemo', 'setSpeed', speed.toString());
     setState(() {
-      _lastMessage = 'Speed set to ${speed.toStringAsFixed(0)}°/s';
-      _direction = '→ TO UNITY';
+      _lastMessage = 'Speed: ${speed.toStringAsFixed(0)}°';
+      _direction = '→ UNITY';
     });
   }
 
@@ -617,26 +746,26 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
 
     _controller?.sendJsonMessage('GameFrameworkDemo', 'setAxis', axisData);
     setState(() {
-      _lastMessage = 'Axis set to $axis';
-      _direction = '→ TO UNITY';
+      _lastMessage = 'Axis: $axis';
+      _direction = '→ UNITY';
     });
   }
 
   void _reset() {
     _controller?.sendMessage('GameFrameworkDemo', 'reset', '');
     setState(() {
-      _rotationSpeed = 50;
+      _targetSpeed = 50;
       _rotationAxis = 'Y';
-      _lastMessage = 'Reset requested';
-      _direction = '→ TO UNITY';
+      _lastMessage = 'Reset';
+      _direction = '→ UNITY';
     });
   }
 
   void _getState() {
     _controller?.sendMessage('GameFrameworkDemo', 'getState', '');
     setState(() {
-      _lastMessage = 'State requested';
-      _direction = '→ TO UNITY';
+      _lastMessage = 'Get state';
+      _direction = '→ UNITY';
     });
   }
 
@@ -651,8 +780,8 @@ class _UnityExampleScreenState extends State<UnityExampleScreen> {
 
     _controller?.sendJsonMessage('GameFrameworkDemo', 'setColor', colorData);
     setState(() {
-      _lastMessage = 'Color changed';
-      _direction = '→ TO UNITY';
+      _lastMessage = 'New color';
+      _direction = '→ UNITY';
     });
   }
 

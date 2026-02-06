@@ -54,6 +54,9 @@ abstract class GameEngineController(
     private var eventSink: EventChannel.EventSink? = null
 
     private var eventStreamReady = false
+    
+    // Queue for events that arrive before eventSink is ready
+    private val pendingEvents = mutableListOf<Pair<String, Any?>>()
 
     init {
         container = createContainer()
@@ -251,6 +254,19 @@ abstract class GameEngineController(
     
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         eventSink = events
+        
+        // Flush any pending events that were queued before the sink was ready
+        if (events != null && pendingEvents.isNotEmpty()) {
+            Log.d("GameEngineController", "Flushing ${pendingEvents.size} pending events")
+            val eventsToFlush = pendingEvents.toList()
+            pendingEvents.clear()
+            eventsToFlush.forEach { (event, data) ->
+                events.success(mapOf(
+                    "event" to event,
+                    "data" to data
+                ))
+            }
+        }
     }
     
     override fun onCancel(arguments: Any?) {
@@ -299,6 +315,7 @@ abstract class GameEngineController(
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         eventSink = null
+        pendingEvents.clear()
         lifecycle.removeObserver(this)
         detachEngineView()
 
@@ -318,7 +335,9 @@ abstract class GameEngineController(
         runOnMainThread {
             val sink = eventSink
             if (sink == null) {
-                Log.w("GameEngineController", "sendEventToFlutter: eventSink is null! Event '$event' dropped.")
+                // Queue the event for later delivery when sink becomes available
+                Log.d("GameEngineController", "sendEventToFlutter: eventSink not ready, queuing event '$event'")
+                pendingEvents.add(Pair(event, data))
             } else {
                 Log.d("GameEngineController", "sendEventToFlutter: Sending event '$event' to Flutter")
                 sink.success(mapOf(

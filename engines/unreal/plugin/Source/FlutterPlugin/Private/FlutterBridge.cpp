@@ -63,6 +63,9 @@ AFlutterBridge::AFlutterBridge()
 	PrimaryActorTick.bCanEverTick = true;
 	bIsPaused = false;
 	BinaryChunkSize = 65536; // 64KB default
+	bSurfaceReady = false;
+	SurfaceWidth = 0;
+	SurfaceHeight = 0;
 }
 
 void AFlutterBridge::BeginPlay()
@@ -496,6 +499,66 @@ void AFlutterBridge::OnEngineQuit()
 {
 	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Engine quitting"));
 	OnEngineQuitBP();
+}
+
+// ============================================================
+// MARK: - Surface Events (Android)
+// ============================================================
+
+void AFlutterBridge::OnSurfaceReady(int32 Width, int32 Height)
+{
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Surface ready: %dx%d"), Width, Height);
+	
+	bSurfaceReady = true;
+	SurfaceWidth = Width;
+	SurfaceHeight = Height;
+	
+	// TODO: Configure Unreal rendering to use this surface
+	// This is where you would:
+	// 1. Create a custom viewport
+	// 2. Set up render target
+	// 3. Configure the rendering pipeline
+	
+	// Notify Flutter that surface is ready
+	SendToFlutter(TEXT("FlutterBridge"), TEXT("onSurfaceReady"), FString::Printf(TEXT("{\"width\":%d,\"height\":%d}"), Width, Height));
+}
+
+void AFlutterBridge::OnSurfaceSizeChanged(int32 Width, int32 Height)
+{
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Surface size changed: %dx%d"), Width, Height);
+	
+	SurfaceWidth = Width;
+	SurfaceHeight = Height;
+	
+	// TODO: Update viewport/render target dimensions
+	
+	// Notify Flutter of size change
+	SendToFlutter(TEXT("FlutterBridge"), TEXT("onSurfaceSizeChanged"), FString::Printf(TEXT("{\"width\":%d,\"height\":%d}"), Width, Height));
+}
+
+void AFlutterBridge::OnSurfaceDestroyed()
+{
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Surface destroyed"));
+	
+	bSurfaceReady = false;
+	SurfaceWidth = 0;
+	SurfaceHeight = 0;
+	
+	// TODO: Clean up viewport/render target
+	
+	// Notify Flutter
+	SendToFlutter(TEXT("FlutterBridge"), TEXT("onSurfaceDestroyed"), TEXT("{}"));
+}
+
+void AFlutterBridge::GetSurfaceSize(int32& OutWidth, int32& OutHeight) const
+{
+	OutWidth = SurfaceWidth;
+	OutHeight = SurfaceHeight;
+}
+
+bool AFlutterBridge::IsSurfaceReady() const
+{
+	return bSurfaceReady;
 }
 
 // ============================================================
