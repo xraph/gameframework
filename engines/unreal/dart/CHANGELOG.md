@@ -5,6 +5,19 @@ All notable changes to the Unreal Engine plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.1] - 2026-02-06
+
+### Initial Release
+- Complete Unreal Engine 5.x integration for Flutter
+- Multi-platform support (Android, iOS, macOS, Windows, Linux)
+- Bidirectional communication between Flutter and Unreal Engine
+- Quality settings API with 5 presets
+- Console command execution from Flutter
+- Level/map loading and management
+- Event streams for lifecycle, messages, and scene loads
+- Blueprint support for all features
+- Comprehensive documentation and guides
+
 ## [0.5.0] - 2025-10-27
 
 ### Added

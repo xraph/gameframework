@@ -2,6 +2,19 @@
 
 All notable changes to the gameframework_unity package will be documented in this file.
 
+## [0.0.1] - 2026-02-06
+
+### Initial Release
+- Unity Engine integration for Flutter with multi-platform support
+- Complete desktop platform support (macOS, Windows, Linux)
+- Unity WebGL support for Flutter Web applications
+- Android and iOS Unity integration
+- AR Foundation integration tools
+- Performance monitoring capabilities
+- Full bidirectional communication between Flutter and Unity
+- Scene management and lifecycle handling
+- Comprehensive documentation and guides
+
 ## [0.4.0] - 2024-10-27
 
 ### Added
