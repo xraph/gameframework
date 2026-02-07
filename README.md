@@ -77,9 +77,10 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  gameframework: ^0.0.1
-  gameframework_unity: ^0.0.1  # If using Unity
-  # gameframework_unreal: ^0.0.1  # If using Unreal
+  gameframework: ^0.0.2
+  gameframework_unity: ^0.0.2  # If using Unity
+  gameframework_stream: ^0.0.2  # If using asset streaming
+  # gameframework_unreal: ^0.0.2  # If using Unreal (WIP)
 ```
 
 ### Basic Usage
@@ -233,15 +234,36 @@ Engine Plugin (gameframework_unity/unreal)
 Game Engine (Unity/Unreal)
 ```
 
+## 📊 Project Status & Roadmap
+
+**Current Version:** 0.0.2
+
+### ✅ Production Ready
+- **Unity:** Android, iOS
+- **Core Framework:** All platforms
+
+### 🚧 Work in Progress
+- **Unity:** Web, macOS, Windows, Linux
+- **Unreal:** Android, iOS
+
+### 📋 Roadmap
+- Complete Unity desktop & web support
+- Complete Unreal Engine mobile integration
+- Unreal desktop & web support
+- Advanced streaming features
+- Performance optimization tools
+- v1.0 Production release
+
 ## Platform Support
 
 | Platform | gameframework | Unity | Unreal | Status |
 |----------|--------------|-------|--------|--------|
-| Android  | ✓            | ✓     | ✓      | Stable |
-| iOS      | ✓            | ✓     | ✓      | Stable |
-| macOS    | ✓            | ✓     | ✓      | Beta   |
-| Windows  | ✓            | ✓     | ✓      | Beta   |
-| Linux    | ✓            | ✓     | ✓      | Beta   |
+| Android  | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
+| iOS      | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
+| Web      | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
+| macOS    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
+| Windows  | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
+| Linux    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
 
 ## Continuous Integration
 
@@ -302,9 +324,10 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 All packages use semantic versioning (semver). Current versions:
 
-- gameframework: 0.0.1
-- gameframework_unity: 0.0.1
-- gameframework_unreal: 0.0.1
+- gameframework: 0.0.2
+- gameframework_stream: 0.0.2
+- gameframework_unity: 0.0.2
+- gameframework_unreal: 0.0.2
 
 ## License
 

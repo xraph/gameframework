@@ -8,21 +8,23 @@ Integrate **Unreal Engine 5.x** into your Flutter applications with full bidirec
 
 ## Features
 
-✨ **Core Features:**
-- 🎮 Full Unreal Engine 5.x integration
+> **⚠️ Development Status:** Unreal Engine integration is currently under active development. Features and APIs may change.
+
+✨ **Core Features (WIP):**
+- 🎮 Unreal Engine 5.x integration
 - 🔄 Bidirectional communication (Flutter ↔ Unreal)
 - 🎯 Blueprint support for non-programmers
-- 📱 Multi-platform support (Android, iOS, macOS, Windows, Linux)
+- 📱 Multi-platform support focus: Android, iOS
 - ⚡ High-performance native bridges (JNI, Objective-C++)
 
-🎨 **Unreal-Specific Features:**
+🎨 **Unreal-Specific Features (Planned):**
 - 🎚️ Quality settings with 5 presets (low, medium, high, epic, cinematic)
 - 🖥️ Console command execution (`stat fps`, `r.SetRes`, etc.)
 - 🗺️ Level/map loading and streaming
 - 📊 Quality level control (AA, shadows, textures, effects, etc.)
 - 🎬 Blueprint events for lifecycle and messaging
 
-🚀 **Advanced Features:**
+🚀 **Advanced Features (Planned):**
 - 📦 Binary messaging with compression and chunked transfers
 - ⏱️ Message batching and throttling for performance optimization
 - 📊 Delta compression for efficient state synchronization
@@ -33,11 +35,13 @@ Integrate **Unreal Engine 5.x** into your Flutter applications with full bidirec
 
 | Platform | Status | Requirements |
 |----------|--------|--------------|
-| Android | ✅ Production Ready | API 21+, NDK r25+ |
-| iOS | ✅ Production Ready | iOS 12.0+, Xcode 14+ |
-| macOS | ✅ Production Ready | macOS 10.14+, Xcode 14+ |
-| Windows | ✅ Ready | Windows 10+, Visual Studio 2022 |
-| Linux | ✅ Ready | Ubuntu 20.04+, GTK 3.0+ |
+| Android | 🚧 **Work in Progress** | API 21+, NDK r25+ |
+| iOS | 🚧 **Work in Progress** | iOS 12.0+, Xcode 14+ |
+| macOS | ⏳ **Planned** | macOS 10.14+, Xcode 14+ |
+| Windows | ⏳ **Planned** | Windows 10+, Visual Studio 2022 |
+| Linux | ⏳ **Planned** | Ubuntu 20.04+, GTK 3.0+ |
+
+**Note:** Unreal Engine integration is currently under active development. Android and iOS support are the primary focus.
 
 ## Quick Start
 
@@ -47,8 +51,8 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  gameframework: ^0.5.0
-  gameframework_unreal: ^0.5.0
+  gameframework: ^0.0.2
+  gameframework_unreal: ^0.0.2
 ```
 
 Install:

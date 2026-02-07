@@ -29,8 +29,9 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 
 ```yaml
 dependencies:
-  gameframework: ^0.4.0
-  gameframework_unity: ^0.4.0
+  gameframework: ^0.0.2
+  gameframework_unity: ^0.0.2
+  gameframework_stream: ^0.0.2  # Optional: for asset streaming
 ```
 
 Or install from the command line:
@@ -83,8 +84,10 @@ class GameScreen extends StatelessWidget {
 
 | Engine | Status | Platforms | Version |
 |--------|--------|-----------|---------|
-| **Unity** | ✅ Available | Android, iOS | 2022.3.x |
-| **Unreal Engine** | 🚧 Coming Soon | Android, iOS | 5.x |
+| **Unity** | ✅ Production (Android, iOS)<br>🚧 WIP (Web, Desktop) | Android, iOS, Web*, macOS*, Windows*, Linux* | 2022.3.x |
+| **Unreal Engine** | 🚧 WIP (Android, iOS) | Android*, iOS* | 5.x |
+
+\* = Work in Progress
 
 ---
 
@@ -241,28 +244,34 @@ The example demonstrates:
 
 ---
 
-## 📊 Project Status
+## 📊 Project Status & Roadmap
 
-**Current Version:** 0.4.0
-**Overall Progress:** ~60% Complete (4 of 8 phases)
+**Current Version:** 0.0.2
 
-### Completed Phases
-- ✅ **Phase 1:** Core Framework (Dart)
-- ✅ **Phase 2:** Native Bridge (Android & iOS)
-- ✅ **Phase 3:** Unity Plugin (Full implementation)
-- ✅ **Phase 4:** Unity Production Features (Complete with testing)
+### ✅ Production Ready
+- **Unity:** Android, iOS
+- **Core Framework:** All platforms
+- **Quality:** Type-safe API, comprehensive tests, clean static analysis
 
-### Quality Metrics
-- ✅ 39/39 tests passing
-- ✅ Static analysis clean (flutter analyze)
-- ✅ Type-safe API throughout
-- ✅ Comprehensive documentation (9,000+ lines)
+### 🚧 Work in Progress
+- **Unity:** Web, macOS, Windows, Linux
+- **Unreal:** Android, iOS
 
-### Upcoming
-- 📋 **Phase 5-6:** Unreal Engine Plugin
-- 📋 **Phase 7-8:** Polish & v1.0 Release
-
-See [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) for details.
+### 📋 Roadmap
+- **Near-term:**
+  - Complete Unity desktop (macOS, Windows, Linux) support
+  - Complete Unity Web/WebGL support
+  - Complete Unreal Engine mobile (Android, iOS) integration
+  
+- **Mid-term:**
+  - Unreal desktop & web support
+  - Advanced asset streaming features
+  - Performance optimization tools
+  
+- **Long-term:**
+  - Additional game engine integrations
+  - Cloud services integration
+  - v1.0 Production release
 
 ---
 

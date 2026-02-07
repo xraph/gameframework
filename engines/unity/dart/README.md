@@ -5,15 +5,27 @@ Unity Engine integration plugin for Game Framework. This plugin allows you to em
 ## Features
 
 - ✅ Unity 2022.3.x support
-- ✅ Multi-platform: Android, iOS, Web, macOS, Windows, Linux
+- ✅ **Production Ready:** Android, iOS
+- 🚧 **Work in Progress:** Web, macOS, Windows, Linux
 - ✅ Lifecycle management (pause, resume, destroy)
 - ✅ Bidirectional communication between Flutter and Unity
 - ✅ Scene load events
 - ✅ Error handling
-- ✅ WebGL support for Flutter Web
+- 🚧 WebGL support for Flutter Web (WIP)
 - ✅ AR Foundation support (ARCore/ARKit)
 - ✅ Performance monitoring
-- ✅ Desktop platform support (macOS, Windows, Linux)
+- 🚧 Desktop platform support (macOS, Windows, Linux) (WIP)
+
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Android | ✅ **Production Ready** | API 21+, Stable |
+| iOS | ✅ **Production Ready** | iOS 12.0+, Stable |
+| Web | 🚧 **Work in Progress** | WebGL support coming soon |
+| macOS | 🚧 **Work in Progress** | Desktop support coming soon |
+| Windows | 🚧 **Work in Progress** | Desktop support coming soon |
+| Linux | 🚧 **Work in Progress** | Desktop support coming soon |
 
 ## Installation
 
