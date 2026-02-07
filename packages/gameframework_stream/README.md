@@ -1,6 +1,6 @@
 # GameFramework Stream
 
-Asset streaming support for Flutter Game Framework. Enables apps to ship with minimal base size and download Unity Addressable content at runtime from GameFramework Cloud.
+Asset streaming support for Game Framework. Enables apps to ship with minimal base size and download Unity Addressable content at runtime from GameFramework Cloud.
 
 ## Features
 

@@ -1,4 +1,4 @@
-# Flutter Game Framework
+# Game Framework
 
 A unified, modular framework for embedding multiple game engines (Unity, Unreal Engine, and potentially others) into Flutter applications.
 
@@ -304,13 +304,6 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- Inspired by [flutter-unity-view-widget](https://github.com/juicycleff/flutter-unity-view-widget)
-- Built with ❤️ for the Flutter and game development communities
 
 ---
 

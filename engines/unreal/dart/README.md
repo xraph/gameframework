@@ -1,4 +1,4 @@
-# Unreal Engine Plugin for Flutter Game Framework
+# Unreal Engine Plugin for Game Framework
 
 [![pub package](https://img.shields.io/pub/v/gameframework_unreal.svg)](https://pub.dev/packages/gameframework_unreal)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux-blue.svg)](https://pub.dev/packages/gameframework_unreal)

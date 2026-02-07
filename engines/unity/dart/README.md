@@ -1,6 +1,6 @@
-# Unity Engine Plugin for Flutter Game Framework
+# Unity Engine Plugin for Game Framework
 
-Unity Engine integration plugin for the Flutter Game Framework. This plugin allows you to embed Unity games in your Flutter applications with a unified API.
+Unity Engine integration plugin for Game Framework. This plugin allows you to embed Unity games in your Flutter applications with a unified API.
 
 ## Features
 

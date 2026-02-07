@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: 'Package to publish (all, gameframework, gameframework_unity, gameframework_unreal)'
+        description: 'Package to publish (all, gameframework, gameframework_unity, gameframework_unreal, gameframework_stream)'
         required: true
         default: 'all'
         type: choice
         options:
           - all
           - gameframework
+          - gameframework_stream
           - gameframework_unity
           - gameframework_unreal
       dry_run:
@@ -35,6 +36,8 @@ jobs:
         package:
           - name: gameframework
             path: packages/gameframework
+          - name: gameframework_stream
+            path: packages/gameframework_stream
           - name: gameframework_unity
             path: engines/unity/dart
           - name: gameframework_unreal
@@ -90,12 +93,6 @@ jobs:
         working-directory: packages/gameframework
         run: flutter pub get
 
-      - name: Setup pub credentials
-        if: github.event.inputs.dry_run != 'true'
-        run: |
-          mkdir -p $HOME/.pub-cache
-          echo '${{ secrets.PUB_CREDENTIALS }}' > $HOME/.pub-cache/credentials.json
-
       - name: Publish to pub.dev (dry-run)
         if: github.event.inputs.dry_run == 'true'
         working-directory: packages/gameframework
@@ -104,7 +101,9 @@ jobs:
       - name: Publish to pub.dev
         if: github.event.inputs.dry_run != 'true'
         working-directory: packages/gameframework
-        run: flutter pub publish --force
+        run: dart pub token add https://pub.dev --env-var PUB_TOKEN && flutter pub publish --force
+        env:
+          PUB_TOKEN: ${{ secrets.PUB_TOKEN }}
 
       - name: Extract version
         if: github.event.inputs.dry_run != 'true'
@@ -115,15 +114,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Published gameframework v$VERSION"
 
-  # Publish engine plugins after core package
+  # Publish dependent packages after core package (stream, engine plugins)
   # matrix is NOT available in job-level `if`, so per-package filtering
   # is handled at the step level via the should_publish check.
-  publish-engine-plugins:
+  publish-dependent-packages:
     name: Publish ${{ matrix.package.name }}
     needs: [validate, publish-gameframework]
     runs-on: ubuntu-latest
     # always() is required so this job isn't auto-skipped when publish-gameframework is skipped
-    # (e.g. when dispatching for a single engine plugin only).
+    # (e.g. when dispatching for a single dependent package only).
     # We gate on validate succeeding and publish-gameframework not having failed.
     if: |
       always() &&
@@ -136,6 +135,8 @@ jobs:
     strategy:
       matrix:
         package:
+          - name: gameframework_stream
+            path: packages/gameframework_stream
           - name: gameframework_unity
             path: engines/unity/dart
           - name: gameframework_unreal
@@ -218,14 +219,14 @@ jobs:
   # Create GitHub release on tag push after all packages are published
   create-release:
     name: Create GitHub Release
-    needs: [publish-gameframework, publish-engine-plugins]
+    needs: [publish-gameframework, publish-dependent-packages]
     runs-on: ubuntu-latest
     if: |
       always() &&
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/tags/v') &&
       needs.publish-gameframework.result == 'success' &&
-      needs.publish-engine-plugins.result == 'success'
+      needs.publish-dependent-packages.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -256,9 +257,10 @@ jobs:
             ## Flutter Game Framework ${{ steps.tag_version.outputs.version }}
 
             Published packages:
-            - [gameframework](https://pub.dev/packages/gameframework)
-            - [gameframework_unity](https://pub.dev/packages/gameframework_unity)
-            - [gameframework_unreal](https://pub.dev/packages/gameframework_unreal)
+            - [gameframework](https://pub.dev/packages/gameframework) - Core framework
+            - [gameframework_stream](https://pub.dev/packages/gameframework_stream) - Asset streaming
+            - [gameframework_unity](https://pub.dev/packages/gameframework_unity) - Unity integration
+            - [gameframework_unreal](https://pub.dev/packages/gameframework_unreal) - Unreal integration
 
             ### Changelog
             ${{ steps.changelog.outputs.changelog }}

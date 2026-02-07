@@ -6,7 +6,6 @@ import 'package:gameframework/gameframework.dart';
 
 import 'cache_manager.dart';
 import 'content_downloader.dart';
-import 'models/content_bundle.dart';
 import 'models/content_manifest.dart';
 import 'models/download_progress.dart';
 import 'models/download_strategy.dart';
