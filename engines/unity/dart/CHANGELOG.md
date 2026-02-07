@@ -2,6 +2,12 @@
 
 All notable changes to the gameframework_unity package will be documented in this file.
 
+## [0.0.2] - 2026-02-06
+
+### Changed
+- Updated README with improved documentation and examples
+- Minor documentation improvements
+
 ## [0.0.1] - 2026-02-06
 
 ### Initial Release
