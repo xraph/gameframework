@@ -300,7 +300,7 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 - Gradle 8.0+
 
 ### iOS
-- iOS 12.0 or higher
+- iOS 15.0 or higher
 - Swift 5.0+
 - Xcode 14.0+
 

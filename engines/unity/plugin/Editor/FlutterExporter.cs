@@ -9,13 +9,14 @@ namespace Xraph.GameFramework.Unity.Editor
     /// Unity editor tool for exporting projects for Flutter integration
     ///
     /// This provides menu items and automation for exporting Unity builds
-    /// that are ready to integrate with the Flutter Game Framework.
+    /// that are ready to integrate with the GameFramework.
     /// </summary>
     public class FlutterExporter : EditorWindow
     {
         private string exportPath = "";
         private bool exportAndroid = true;
         private bool exportIOS = true;
+        private bool exportMacOS = true;
         private bool developmentBuild = false;
         private bool autoRunBuilder = false;
 
@@ -27,7 +28,7 @@ namespace Xraph.GameFramework.Unity.Editor
 
         void OnGUI()
         {
-            GUILayout.Label("Flutter Game Framework Exporter", EditorStyles.boldLabel);
+            GUILayout.Label("GameFramework Exporter", EditorStyles.boldLabel);
             GUILayout.Space(10);
 
             // Export path
@@ -50,6 +51,7 @@ namespace Xraph.GameFramework.Unity.Editor
             GUILayout.Label("Platforms", EditorStyles.boldLabel);
             exportAndroid = EditorGUILayout.Toggle("Export Android", exportAndroid);
             exportIOS = EditorGUILayout.Toggle("Export iOS", exportIOS);
+            exportMacOS = EditorGUILayout.Toggle("Export macOS", exportMacOS);
 
             GUILayout.Space(10);
 
@@ -61,7 +63,7 @@ namespace Xraph.GameFramework.Unity.Editor
             GUILayout.Space(20);
 
             // Export button
-            GUI.enabled = !string.IsNullOrEmpty(exportPath) && (exportAndroid || exportIOS);
+            GUI.enabled = !string.IsNullOrEmpty(exportPath) && (exportAndroid || exportIOS || exportMacOS);
             if (GUILayout.Button("Export for Flutter", GUILayout.Height(40)))
             {
                 Export();
@@ -79,6 +81,10 @@ namespace Xraph.GameFramework.Unity.Editor
             if (GUILayout.Button("Export iOS Only"))
             {
                 QuickExportIOS();
+            }
+            if (GUILayout.Button("Export macOS Only"))
+            {
+                QuickExportMacOS();
             }
         }
 
@@ -107,6 +113,12 @@ namespace Xraph.GameFramework.Unity.Editor
                 {
                     Debug.Log("Exporting iOS...");
                     ExportIOS(Path.Combine(exportPath, "ios"));
+                }
+
+                if (exportMacOS)
+                {
+                    Debug.Log("Exporting macOS...");
+                    ExportMacOS(Path.Combine(exportPath, "macos"));
                 }
 
                 EditorUtility.DisplayDialog("Success",
@@ -145,6 +157,18 @@ namespace Xraph.GameFramework.Unity.Editor
                 ExportIOS(path);
                 EditorUtility.DisplayDialog("Success",
                     "iOS export completed!\n\nExported to: " + path,
+                    "OK");
+            }
+        }
+
+        private void QuickExportMacOS()
+        {
+            string path = EditorUtility.SaveFolderPanel("Select macOS Export Folder", "", "macos");
+            if (!string.IsNullOrEmpty(path))
+            {
+                ExportMacOS(path);
+                EditorUtility.DisplayDialog("Success",
+                    "macOS export completed!\n\nExported to: " + path,
                     "OK");
             }
         }
@@ -274,6 +298,69 @@ namespace Xraph.GameFramework.Unity.Editor
             }
         }
 
+        /// <summary>
+        /// Export macOS build for Flutter integration.
+        /// Attempts IL2CPP + Xcode project; falls back to .app if not available.
+        /// </summary>
+        public static void ExportMacOS(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+
+            BuildTarget previousTarget = EditorUserBuildSettings.activeBuildTarget;
+            BuildTargetGroup previousGroup = BuildPipeline.GetBuildTargetGroup(previousTarget);
+
+            try
+            {
+                EditorUserBuildSettings.SwitchActiveBuildTarget(
+                    BuildTargetGroup.Standalone,
+                    BuildTarget.StandaloneOSX
+                );
+
+                // Try IL2CPP + Xcode project
+                PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
+                try { EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true"); }
+                catch (System.Exception) { /* May not work in Unity 6 Build Profiles */ }
+
+                // Determine output: Xcode project or .app
+                var activeBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.Standalone);
+                string locationPath = (activeBackend == ScriptingImplementation.IL2CPP)
+                    ? path
+                    : System.IO.Path.Combine(path, PlayerSettings.productName + ".app");
+
+                BuildPlayerOptions buildOptions = new BuildPlayerOptions
+                {
+                    scenes = GetScenePaths(),
+                    locationPathName = locationPath,
+                    target = BuildTarget.StandaloneOSX,
+                    options = BuildOptions.None
+                };
+
+                if (EditorUserBuildSettings.development)
+                {
+                    buildOptions.options |= BuildOptions.Development;
+                }
+
+                var report = BuildPipeline.BuildPlayer(buildOptions);
+
+                if (report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded)
+                {
+                    Debug.Log("macOS export succeeded: " + path);
+                    CreateMacOSReadme(path);
+                }
+                else
+                {
+                    throw new Exception("macOS build failed: " + report.summary.result);
+                }
+            }
+            finally
+            {
+                EditorUserBuildSettings.SwitchActiveBuildTarget(previousGroup, previousTarget);
+            }
+        }
+
         private static void ConfigureAndroidSettings()
         {
             // Set Android settings for Flutter integration
@@ -292,7 +379,7 @@ namespace Xraph.GameFramework.Unity.Editor
         private static void ConfigureIOSSettings()
         {
             // Set iOS settings for Flutter integration
-            PlayerSettings.iOS.targetOSVersionString = "12.0";
+            PlayerSettings.iOS.targetOSVersionString = "15.0";
 
             // Scripting backend
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.iOS, ScriptingImplementation.IL2CPP);
@@ -301,6 +388,15 @@ namespace Xraph.GameFramework.Unity.Editor
             PlayerSettings.iOS.sdkVersion = iOSSdkVersion.DeviceSDK;
 
             Debug.Log("iOS settings configured for Flutter integration");
+        }
+
+        private static void ConfigureMacOSSettings()
+        {
+            // Scripting backend
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
+            // macOS build number
+            PlayerSettings.macOS.buildNumber = PlayerSettings.bundleVersion;
+            Debug.Log("macOS settings configured for Flutter integration");
         }
 
         private static string[] GetScenePaths()
@@ -348,7 +444,7 @@ include ':unityLibrary'
 - If you get duplicate class errors, check for conflicting dependencies
 - Check that all .so files are included in the build
 
-For more information, see the Flutter Game Framework documentation.
+For more information, see the GameFramework documentation.
 ";
 
             File.WriteAllText(Path.Combine(path, "README.md"), readme);
@@ -364,7 +460,7 @@ This folder contains the Unity iOS export for Flutter integration.
 
 1. Copy the `UnityFramework.framework` from this export to your Flutter project's iOS folder
 2. The podspec will automatically link the framework
-3. Ensure your iOS deployment target is at least 12.0
+3. Ensure your iOS deployment target is at least 15.0
 4. Run `flutter pub get` and `pod install` in the ios folder
 5. Rebuild your Flutter app
 
@@ -381,9 +477,46 @@ If you open the project in Xcode:
 - If the framework is not found, verify the search paths
 - Ensure the framework is for the correct architecture (device vs simulator)
 
-For more information, see the Flutter Game Framework documentation.
+For more information, see the GameFramework documentation.
 ";
 
+            File.WriteAllText(Path.Combine(path, "README.md"), readme);
+        }
+
+        private static void CreateMacOSReadme(string path)
+        {
+            string readme = @"# macOS Unity Export for Flutter
+
+This folder contains the Unity macOS export (Xcode project) for Flutter integration.
+
+## Integration Steps
+
+1. Build UnityFramework from the Xcode project (or use game-cli: `game export unity -p macos` which runs xcodebuild for you).
+2. Copy the built `UnityFramework.framework` to your Flutter project's macos folder (or run `game sync unity --platform macos`).
+3. The podspec will link the framework. Ensure macOS deployment target is at least 10.15.
+4. Run `flutter pub get` and rebuild your Flutter app for macOS.
+
+## Building the framework manually
+
+From this directory:
+```bash
+xcodebuild archive -project <YourProject>.xcodeproj \
+  -scheme UnityFramework -configuration Release \
+  -destination ""generic/platform=macOS"" \
+  -archivePath ./macos.xcarchive \
+  MACOSX_DEPLOYMENT_TARGET=10.15 \
+  BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+  SKIP_INSTALL=NO
+```
+The framework will be in `macos.xcarchive/Products/Library/Frameworks/UnityFramework.framework`.
+
+## Troubleshooting
+
+- If you get code signing errors, check your team settings in Xcode
+- If the framework is not found, verify FRAMEWORK_SEARCH_PATHS in the plugin podspec
+
+For more information, see the GameFramework documentation.
+";
             File.WriteAllText(Path.Combine(path, "README.md"), readme);
         }
 
@@ -410,6 +543,20 @@ For more information, see the Flutter Game Framework documentation.
                 ExportIOS(path);
                 EditorUtility.DisplayDialog("Success",
                     "iOS export completed!\n\nExported to: " + path,
+                    "OK");
+                EditorUtility.RevealInFinder(path);
+            }
+        }
+
+        [MenuItem("Game Framework/Quick Export macOS")]
+        public static void QuickExportMacOSMenu()
+        {
+            string path = EditorUtility.SaveFolderPanel("Select macOS Export Folder", "", "macos");
+            if (!string.IsNullOrEmpty(path))
+            {
+                ExportMacOS(path);
+                EditorUtility.DisplayDialog("Success",
+                    "macOS export completed!\n\nExported to: " + path,
                     "OK");
                 EditorUtility.RevealInFinder(path);
             }

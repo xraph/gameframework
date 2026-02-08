@@ -645,7 +645,7 @@ Some commands only work in development builds
 
 ### Q: Can I use this with Unity too?
 
-**A:** Yes! The Flutter Game Framework supports both Unity and Unreal in the same project (though not simultaneously in one screen).
+**A:** Yes! The GameFramework supports both Unity and Unreal in the same project (though not simultaneously in one screen).
 
 ---
 

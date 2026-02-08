@@ -2,6 +2,14 @@
 
 All notable changes to the gameframework_unity package will be documented in this file.
 
+## [0.0.3] - 2026-02-06
+
+### Changed
+- Updated platform support status in README
+- Clarified production ready platforms (Android, iOS)
+- Marked desktop and web platforms as Work in Progress
+- Improved documentation clarity
+
 ## [0.0.2] - 2026-02-06
 
 ### Changed

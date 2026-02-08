@@ -38,7 +38,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Flutter Game Framework'),
+        title: const Text('GameFramework'),
         elevation: 2,
       ),
       body: Center(
@@ -52,7 +52,7 @@ class HomePage extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text(
-              'Flutter Game Framework',
+              'GameFramework',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,

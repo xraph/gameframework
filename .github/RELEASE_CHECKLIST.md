@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist when preparing a new release of Flutter Game Framework.
+Use this checklist when preparing a new release of GameFramework.
 
 ## Pre-Release
 

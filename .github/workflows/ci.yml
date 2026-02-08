@@ -60,6 +60,54 @@ jobs:
           flags: ${{ matrix.package.name }}
           name: ${{ matrix.package.name }}-coverage
 
+  test-web:
+    name: Web Tests (gameframework_unity)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: engines/unity/dart
+        run: flutter pub get
+
+      - name: Run web tests (Chrome)
+        working-directory: engines/unity/dart
+        run: flutter test --platform chrome test/unity_controller_web_test.dart
+
+  test-macos:
+    name: macOS Tests (gameframework_unity)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        working-directory: engines/unity/dart
+        run: flutter pub get
+
+      - name: Analyze macOS code
+        working-directory: engines/unity/dart
+        run: flutter analyze
+
+      - name: Run Dart tests on macOS
+        working-directory: engines/unity/dart
+        run: flutter test --coverage
+
   validate-publish:
     name: Validate pub.dev requirements
     runs-on: ubuntu-latest

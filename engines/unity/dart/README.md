@@ -21,9 +21,9 @@ Unity Engine integration plugin for Game Framework. This plugin allows you to em
 | Platform | Status | Notes |
 |----------|--------|-------|
 | Android | ✅ **Production Ready** | API 21+, Stable |
-| iOS | ✅ **Production Ready** | iOS 12.0+, Stable |
-| Web | 🚧 **Work in Progress** | WebGL support coming soon |
-| macOS | 🚧 **Work in Progress** | Desktop support coming soon |
+| iOS | ✅ **Production Ready** | iOS 15.0+, Stable |
+| Web | ✅ **Production Ready** | WebGL 2.0+, See [WEB_GUIDE.md](WEB_GUIDE.md) |
+| macOS | ✅ **Production Ready** | macOS 10.14+, See [MACOS_GUIDE.md](MACOS_GUIDE.md) |
 | Windows | 🚧 **Work in Progress** | Desktop support coming soon |
 | Linux | 🚧 **Work in Progress** | Desktop support coming soon |
 
@@ -292,7 +292,7 @@ controller.sceneLoadStream.listen((scene) {
 ### Platform Requirements
 
 - **Android:** minSdkVersion 21
-- **iOS:** 12.0 or higher
+- **iOS:** 15.0 or higher
 - **Web:** Modern browser with WebGL 2.0 and WebAssembly support
 - **macOS:** 10.14 (Mojave) or higher
 - **Windows:** Windows 10 or later
@@ -317,7 +317,7 @@ controller.sceneLoadStream.listen((scene) {
 
 - Ensure `UnityFramework.framework` is in the correct location
 - Check that the framework is properly signed
-- Verify iOS deployment target is at least 12.0
+- Verify iOS deployment target is at least 15.0
 
 ## Platform-Specific Guides
 

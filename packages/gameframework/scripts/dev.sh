@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Flutter Game Framework - Development Helper Script
+# GameFramework - Development Helper Script
 # This script provides common development tasks
 
 set -e
@@ -35,7 +35,7 @@ print_warning() {
 
 cmd_help() {
     cat << EOF
-Flutter Game Framework - Development Helper
+GameFramework - Development Helper
 
 Usage: ./scripts/dev.sh [command]
 
@@ -67,7 +67,7 @@ EOF
 }
 
 cmd_setup() {
-    print_header "Setting up Flutter Game Framework"
+    print_header "Setting up GameFramework"
 
     echo "Checking Flutter installation..."
     if ! command -v flutter &> /dev/null; then

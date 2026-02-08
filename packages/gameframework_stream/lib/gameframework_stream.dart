@@ -1,4 +1,4 @@
-/// Flutter Game Framework - Asset Streaming Support
+/// GameFramework - Asset Streaming Support
 ///
 /// Provides on-demand downloading of Unity Addressable assets from
 /// GameFramework Cloud, enabling apps to ship with minimal base size

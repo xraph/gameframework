@@ -2,7 +2,7 @@ import Flutter
 import UIKit
 
 /**
- * GameframeworkPlugin - Main plugin for Flutter Game Framework
+ * GameframeworkPlugin - Main plugin for GameFramework
  *
  * This plugin provides the core infrastructure for embedding game engines.
  * Engine-specific plugins (Unity, Unreal) register their factories here.

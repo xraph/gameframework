@@ -2,7 +2,7 @@ import 'package:gameframework/gameframework.dart';
 import 'unity_controller_web.dart' if (dart.library.io) 'unity_controller.dart'
     as platform;
 
-/// Unity Engine Plugin for Flutter Game Framework
+/// Unity Engine Plugin for GameFramework
 ///
 /// This plugin registers the Unity engine factory with the game framework,
 /// allowing Unity engines to be created and managed through the unified API.

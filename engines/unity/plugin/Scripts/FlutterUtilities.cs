@@ -9,7 +9,7 @@ namespace Xraph.GameFramework.Unity
     /// Utility helpers for Flutter integration
     ///
     /// Provides common functionality and helper methods for working
-    /// with the Flutter Game Framework.
+    /// with the GameFramework.
     /// </summary>
     public static class FlutterUtilities
     {

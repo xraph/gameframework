@@ -219,4 +219,4 @@ Source/
 
 ## License
 
-These templates are part of the Flutter Game Framework and are provided under the same license.
+These templates are part of the GameFramework and are provided under the same license.

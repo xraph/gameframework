@@ -1,4 +1,4 @@
-/// Unity Engine plugin for Flutter Game Framework
+/// Unity Engine plugin for GameFramework
 ///
 /// This plugin provides Unity-specific implementation of the game framework,
 /// allowing Flutter apps to embed and control Unity game engines.

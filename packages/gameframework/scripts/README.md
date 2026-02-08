@@ -1,6 +1,6 @@
 # Development Scripts
 
-This directory contains helper scripts for Flutter Game Framework development.
+This directory contains helper scripts for GameFramework development.
 
 ---
 

@@ -1,6 +1,6 @@
-/// Unreal Engine plugin for Flutter Game Framework
+/// Unreal Engine plugin for GameFramework
 ///
-/// Provides Unreal Engine integration for the Flutter Game Framework,
+/// Provides Unreal Engine integration for the GameFramework,
 /// enabling bidirectional communication, lifecycle management, and
 /// quality settings control.
 ///

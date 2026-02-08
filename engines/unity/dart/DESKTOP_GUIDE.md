@@ -19,7 +19,7 @@ Complete guide for integrating Unity with Flutter on desktop platforms (macOS, W
 
 ## Overview
 
-The Flutter Game Framework supports Unity integration on all major desktop platforms, allowing you to embed Unity games directly in Flutter desktop applications.
+The GameFramework supports Unity integration on all major desktop platforms, allowing you to embed Unity games directly in Flutter desktop applications.
 
 ### Architecture
 

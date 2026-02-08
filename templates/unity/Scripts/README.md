@@ -1,6 +1,6 @@
 # Game Framework Unity Templates
 
-This directory contains example scripts demonstrating all features of the Flutter Game Framework Unity integration.
+This directory contains example scripts demonstrating all features of the GameFramework Unity integration.
 
 ## Quick Start
 

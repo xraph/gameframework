@@ -53,6 +53,42 @@ namespace Xraph.GameFramework.Unity
         private static extern void _notifyUnityReady();
 #endif
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL Native Methods (implemented in FlutterBridge.jslib)
+        [DllImport("__Internal")]
+        private static extern void _sendMessageToFlutter(string message);
+
+        [DllImport("__Internal")]
+        private static extern void _showHostMainWindow();
+
+        [DllImport("__Internal")]
+        private static extern void _unloadUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _quitUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _notifyUnityReady();
+#endif
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        // macOS Native Methods (implemented in FlutterBridge.mm)
+        [DllImport("__Internal")]
+        private static extern void _sendMessageToFlutter(string message);
+
+        [DllImport("__Internal")]
+        private static extern void _showHostMainWindow();
+
+        [DllImport("__Internal")]
+        private static extern void _unloadUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _quitUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _notifyUnityReady();
+#endif
+
         /// <summary>
         /// Initialize the native API
         /// Call this once at app startup
@@ -90,6 +126,10 @@ namespace Xraph.GameFramework.Unity
             _notifyUnityReady();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "onReady", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _notifyUnityReady();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _notifyUnityReady();
 #endif
 
             OnUnityReady?.Invoke();
@@ -113,6 +153,10 @@ namespace Xraph.GameFramework.Unity
             _sendMessageToFlutter(message);
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "onMessage", message);
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _sendMessageToFlutter(message);
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _sendMessageToFlutter(message);
 #elif UNITY_EDITOR
             Debug.Log($"NativeAPI [Editor]: Would send to Flutter: {message}");
 #else
@@ -148,6 +192,10 @@ namespace Xraph.GameFramework.Unity
 #elif UNITY_ANDROID && !UNITY_EDITOR
             // On Android, call the activity method
             SendToFlutterAndroid("Unity", "showHostWindow", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _showHostMainWindow();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _showHostMainWindow();
 #endif
         }
 
@@ -162,6 +210,10 @@ namespace Xraph.GameFramework.Unity
             _unloadUnity();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "unload", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _unloadUnity();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _unloadUnity();
 #endif
         }
 
@@ -176,6 +228,10 @@ namespace Xraph.GameFramework.Unity
             _quitUnity();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "quit", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _quitUnity();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _quitUnity();
 #endif
 
             Application.Quit();

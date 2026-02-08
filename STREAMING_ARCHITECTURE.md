@@ -1,6 +1,6 @@
 # Streaming Architecture
 
-This document describes the architecture of the asset streaming system in Flutter Game Framework.
+This document describes the architecture of the asset streaming system in GameFramework.
 
 ## Overview
 

@@ -1,13 +1,13 @@
-# AR Foundation Support for Flutter Game Framework
+# AR Foundation Support for GameFramework
 
-This guide explains how to integrate Unity's AR Foundation with the Flutter Game Framework.
+This guide explains how to integrate Unity's AR Foundation with the GameFramework.
 
 ---
 
 ## Overview
 
 AR Foundation provides a unified API for building AR experiences that work across multiple
-platforms (ARCore for Android, ARKit for iOS). When combined with the Flutter Game Framework, you
+platforms (ARCore for Android, ARKit for iOS). When combined with the GameFramework, you
 can embed AR experiences directly in your Flutter apps.
 
 ---
@@ -18,7 +18,7 @@ can embed AR experiences directly in your Flutter apps.
 - AR Foundation package 5.x
 - ARCore XR Plugin (for Android)
 - ARKit XR Plugin (for iOS)
-- Flutter Game Framework Unity plugin
+- GameFramework Unity plugin
 
 ---
 

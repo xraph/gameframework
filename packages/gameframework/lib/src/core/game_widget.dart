@@ -232,11 +232,20 @@ class _GameWidgetState extends State<GameWidget> {
         creationParamsCodec: const StandardMessageCodec(),
         gestureRecognizers: widget.gestureRecognizers,
       );
+    } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+      return AppKitView(
+        viewType: viewType,
+        layoutDirection: widget.layoutDirection ?? TextDirection.ltr,
+        creationParams: widget.config.toMap(),
+        creationParamsCodec: const StandardMessageCodec(),
+        gestureRecognizers: widget.gestureRecognizers,
+      );
     } else if (kIsWeb) {
-      // Web implementation would use HtmlElementView
-      return Center(
-        child:
-            Text('Web support for ${widget.engineType.engineName} coming soon'),
+      // Web implementation uses HtmlElementView.
+      // The web controller must register its HTML element with the given viewType.
+      // The engine plugin is responsible for registering the platform view factory.
+      return HtmlElementView(
+        viewType: '${viewType}_$_viewId',
       );
     } else {
       // Unsupported platform

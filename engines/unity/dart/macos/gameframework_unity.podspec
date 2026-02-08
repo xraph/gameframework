@@ -1,28 +1,51 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint gameframework_unity.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
   s.name             = 'gameframework_unity'
-  s.version          = '0.4.0'
-  s.summary          = 'Unity Engine integration for Flutter Game Framework on macOS'
+  s.version          = '2022.3.0'
+  s.summary          = 'Unity Engine plugin for GameFramework on macOS'
   s.description      = <<-DESC
-Unity Engine plugin for Flutter Game Framework. Provides Unity integration with
-bidirectional communication, scene management, and lifecycle handling on macOS.
+Unity Engine integration plugin for the GameFramework on macOS.
+Provides Unity 2022.3.x support for embedding Unity games in Flutter applications.
+
+IMPORTANT: This plugin requires UnityFramework.framework to be vendored by the
+consuming plugin (your game plugin). The framework is NOT included in this package
+because each game has its own Unity build. Use 'game sync unity --platform macos'
+to sync your Unity export to your plugin's macos/ directory.
                        DESC
   s.homepage         = 'https://github.com/xraph/gameframework'
-  s.license          = { :file => '../LICENSE' }
+  s.license          = { :file => '../../../LICENSE' }
   s.author           = { 'Xraph' => 'contact@xraph.com' }
-
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*'
   s.dependency 'FlutterMacOS'
-
+  s.dependency 'gameframework'
   s.platform = :osx, '10.14'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
-  s.swift_version = '5.0'
 
-  # Unity framework dependencies
-  s.frameworks = 'Cocoa', 'UnityFramework'
-  s.vendored_frameworks = 'UnityFramework.framework'
+  # UnityFramework is provided by the consuming plugin (e.g., your game plugin)
+  # NOT vendored here because each game has its own Unity build.
+  # The consumer plugin MUST vendor UnityFramework.framework in their podspec.
+  
+  # Preserve the framework if it exists locally (symlink or actual)
+  # This is needed for the Swift compiler to find the module
+  unity_framework_path = File.join(__dir__, 'UnityFramework.framework')
+  if File.exist?(unity_framework_path) || File.symlink?(unity_framework_path)
+    s.preserve_paths = 'UnityFramework.framework', 'UnityFramework.framework/Resources'
+    # Don't vendor - let the consumer plugin vendor it to avoid conflicts
+    # s.osx.vendored_frameworks = 'UnityFramework.framework'
+  end
+
+  # Configure framework search paths to find UnityFramework from sibling pods
+  # This allows gameframework_unity to import UnityFramework that is vendored
+  # by another pod (the consumer plugin like 'green')
+  s.pod_target_xcconfig = { 
+    'DEFINES_MODULE' => 'YES', 
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    # Search for frameworks in the local directory (symlink), Pods build directory, and sibling plugins
+    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}" "${PODS_CONFIGURATION_BUILD_DIR}" "${PODS_ROOT}/../.symlinks/plugins/*/macos"',
+    # Allow weak linking to UnityFramework
+    'OTHER_LDFLAGS' => '$(inherited) -ObjC'
+  }
+  s.swift_version = '5.0'
 end

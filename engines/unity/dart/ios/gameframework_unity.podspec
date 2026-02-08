@@ -4,9 +4,9 @@
 Pod::Spec.new do |s|
   s.name             = 'gameframework_unity'
   s.version          = '2022.3.0'
-  s.summary          = 'Unity Engine plugin for Flutter Game Framework'
+  s.summary          = 'Unity Engine plugin for GameFramework'
   s.description      = <<-DESC
-Unity Engine integration plugin for the Flutter Game Framework.
+Unity Engine integration plugin for the GameFramework.
 Provides Unity 2022.3.x support for embedding Unity games in Flutter applications.
 
 IMPORTANT: This plugin requires UnityFramework.framework to be vendored by the
@@ -21,7 +21,7 @@ to sync your Unity export to your plugin's ios/ directory.
   s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
   s.dependency 'gameframework'
-  s.platform = :ios, '12.0'
+  s.platform = :ios, '15.0'
 
   # UnityFramework is provided by the consuming plugin (e.g., your game plugin)
   # NOT vendored here because each game has its own Unity build.

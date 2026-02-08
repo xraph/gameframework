@@ -9,7 +9,7 @@ namespace Xraph.GameFramework.Unity.Editor
     /// Unity editor tool for exporting projects for Flutter integration
     ///
     /// This provides menu items and automation for exporting Unity builds
-    /// that are ready to integrate with the Flutter Game Framework.
+    /// that are ready to integrate with the GameFramework.
     /// </summary>
     public class FlutterExporter : EditorWindow
     {
@@ -27,7 +27,7 @@ namespace Xraph.GameFramework.Unity.Editor
 
         void OnGUI()
         {
-            GUILayout.Label("Flutter Game Framework Exporter", EditorStyles.boldLabel);
+            GUILayout.Label("GameFramework Exporter", EditorStyles.boldLabel);
             GUILayout.Space(10);
 
             // Export path
@@ -348,7 +348,7 @@ include ':unityLibrary'
 - If you get duplicate class errors, check for conflicting dependencies
 - Check that all .so files are included in the build
 
-For more information, see the Flutter Game Framework documentation.
+For more information, see the GameFramework documentation.
 ";
 
             File.WriteAllText(Path.Combine(path, "README.md"), readme);
@@ -381,7 +381,7 @@ If you open the project in Xcode:
 - If the framework is not found, verify the search paths
 - Ensure the framework is for the correct architecture (device vs simulator)
 
-For more information, see the Flutter Game Framework documentation.
+For more information, see the GameFramework documentation.
 ";
 
             File.WriteAllText(Path.Combine(path, "README.md"), readme);

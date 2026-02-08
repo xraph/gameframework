@@ -5,21 +5,24 @@ import Foundation
  * Unity Engine Plugin for macOS
  *
  * Registers the Unity engine factory with the game framework.
+ * Creates UnityEngineController instances for each platform view.
  */
 public class UnityEnginePlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        // Register Unity engine factory
         let messenger = registrar.messenger
-        let channelName = "gameframework_unity"
 
+        // Register the platform view factory for Unity
+        let factory = UnityEngineViewFactory(messenger: messenger)
+        registrar.register(factory, withId: "com.xraph.gameframework/unity")
+
+        // Register method channel for plugin-level queries
+        let channelName = "gameframework_unity"
         let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
         let instance = UnityEnginePlugin()
-
         registrar.addMethodCallDelegate(instance, channel: channel)
 
-        // Initialize Unity engine integration
-        initializeUnityEngine(messenger: messenger)
+        NSLog("Unity Engine Plugin initialized for macOS")
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -36,11 +39,36 @@ public class UnityEnginePlugin: NSObject, FlutterPlugin {
             result(FlutterMethodNotImplemented)
         }
     }
+}
 
-    private static func initializeUnityEngine(messenger: FlutterBinaryMessenger) {
-        // Register Unity engine with GameEngineRegistry
-        // This would typically be done through method channel calls
-        // to the core gameframework plugin
-        print("Unity Engine Plugin initialized for macOS")
+// MARK: - Platform View Factory
+
+/**
+ * Factory for creating UnityEngineController platform views
+ */
+class UnityEngineViewFactory: NSObject, FlutterPlatformViewFactory {
+    private let messenger: FlutterBinaryMessenger
+
+    init(messenger: FlutterBinaryMessenger) {
+        self.messenger = messenger
+        super.init()
+    }
+
+    func create(
+        withViewIdentifier viewId: Int64,
+        arguments args: Any?
+    ) -> NSView {
+        let config = args as? [String: Any] ?? [:]
+        let controller = UnityEngineController(
+            frame: CGRect(x: 0, y: 0, width: 300, height: 300),
+            viewId: viewId,
+            messenger: messenger,
+            config: config
+        )
+        return controller.view()
+    }
+
+    func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
+        return FlutterStandardMessageCodec.sharedInstance()
     }
 }

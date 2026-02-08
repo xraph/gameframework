@@ -254,7 +254,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ steps.tag_version.outputs.version }}
           body: |
-            ## Flutter Game Framework ${{ steps.tag_version.outputs.version }}
+            ## GameFramework ${{ steps.tag_version.outputs.version }}
 
             Published packages:
             - [gameframework](https://pub.dev/packages/gameframework) - Core framework

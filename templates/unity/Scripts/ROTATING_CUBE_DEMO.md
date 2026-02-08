@@ -437,4 +437,4 @@ Use this as a template for your own game implementations!
 
 ## License
 
-Part of the Flutter Game Framework - MIT License
+Part of the GameFramework - MIT License

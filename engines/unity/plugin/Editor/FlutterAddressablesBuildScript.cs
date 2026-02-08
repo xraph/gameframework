@@ -16,7 +16,7 @@ using UnityEditor.AddressableAssets.Settings.GroupSchemas;
 namespace Xraph.GameFramework.Unity.Editor
 {
     /// <summary>
-    /// Build script for Addressables integration with Flutter Game Framework.
+    /// Build script for Addressables integration with GameFramework.
     /// Handles building addressables separately and generating manifests.
     /// </summary>
     public static class FlutterAddressablesBuildScript

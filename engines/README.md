@@ -1,6 +1,6 @@
 # Game Engines
 
-This directory contains engine-specific plugins for the Flutter Game Framework.
+This directory contains engine-specific plugins for the GameFramework.
 
 ## Structure
 

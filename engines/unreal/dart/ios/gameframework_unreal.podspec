@@ -5,9 +5,9 @@
 Pod::Spec.new do |s|
   s.name             = 'gameframework_unreal'
   s.version          = '0.5.0'
-  s.summary          = 'Unreal Engine integration for Flutter Game Framework'
+  s.summary          = 'Unreal Engine integration for GameFramework'
   s.description      = <<-DESC
-Unreal Engine 5.x integration plugin for the Flutter Game Framework.
+Unreal Engine 5.x integration plugin for the GameFramework.
 Provides lifecycle management, bidirectional communication, quality settings,
 console commands, and level loading for Unreal Engine in Flutter apps.
 

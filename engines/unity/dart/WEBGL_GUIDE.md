@@ -1,6 +1,6 @@
 # Unity WebGL Integration Guide
 
-This guide explains how to integrate Unity WebGL builds with Flutter Web using the Flutter Game Framework.
+This guide explains how to integrate Unity WebGL builds with Flutter Web using the GameFramework.
 
 ---
 
@@ -19,7 +19,7 @@ This guide explains how to integrate Unity WebGL builds with Flutter Web using t
 
 ## Overview
 
-The Flutter Game Framework supports Unity WebGL builds on Flutter Web, allowing you to embed Unity games directly in web browsers.
+The GameFramework supports Unity WebGL builds on Flutter Web, allowing you to embed Unity games directly in web browsers.
 
 ### Architecture
 

@@ -16,7 +16,7 @@ Complete guide to Unreal Engine quality settings, presets, and performance optim
 
 ## Overview
 
-Unreal Engine quality settings control the visual fidelity and performance of your game. The Flutter Game Framework provides easy-to-use APIs for managing these settings dynamically.
+Unreal Engine quality settings control the visual fidelity and performance of your game. The GameFramework provides easy-to-use APIs for managing these settings dynamically.
 
 ### Quality Levels
 

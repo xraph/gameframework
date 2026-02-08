@@ -1,6 +1,6 @@
-# Unity Plugin Package for Flutter Game Framework
+# Unity Plugin Package for GameFramework
 
-This Unity package provides the C# scripts and native plugins needed to integrate Unity with the Flutter Game Framework.
+This Unity package provides the C# scripts and native plugins needed to integrate Unity with the GameFramework.
 
 ## Contents
 

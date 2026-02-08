@@ -20,13 +20,13 @@ dependencies:
   flutter:
     sdk: flutter
 
-  gameframework: 0.0.2
+  gameframework: 0.0.3
 
   # Unity plugin
-  gameframework_unity: 0.0.2
+  gameframework_unity: 0.0.3
   
   # Unreal plugin
-  gameframework_unreal: 0.0.2
+  gameframework_unreal: 0.0.3
 
   # green:
   #   hosted: http://localhost:4000

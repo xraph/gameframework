@@ -8,7 +8,7 @@ using UnityEditor.Build.Reporting;
 namespace Xraph.GameFramework.Unity.Editor
 {
     /// <summary>
-    /// Unity Editor build script for Flutter Game Framework CLI
+    /// Unity Editor build script for GameFramework CLI
     /// This script is called by the game CLI to automate Unity builds
     /// </summary>
     public static class FlutterBuildScript
@@ -249,7 +249,109 @@ namespace Xraph.GameFramework.Unity.Editor
         }
 
         /// <summary>
-        /// Build for macOS
+        /// Build for WebGL - exports Unity WebGL build for Flutter Web
+        /// </summary>
+        [MenuItem("Game Framework/Build WebGL")]
+        public static void BuildWebGL()
+        {
+            Debug.Log("Starting WebGL build for Flutter Web...");
+
+            string buildPath = GetBuildPath();
+            bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.WebGL))
+                {
+                    Debug.LogError("Addressables build failed, aborting WebGL build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
+
+            if (!Directory.Exists(buildPath))
+            {
+                Directory.CreateDirectory(buildPath);
+            }
+
+            // Configure WebGL-specific settings for optimal web delivery
+            ConfigureWebGLSettings(isDevelopment);
+
+            BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
+            {
+                scenes = GetScenes(),
+                locationPathName = buildPath,
+                target = BuildTarget.WebGL,
+                options = BuildOptions.None
+            };
+
+            if (isDevelopment)
+            {
+                buildPlayerOptions.options |= BuildOptions.Development;
+            }
+
+            Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Development: {isDevelopment}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
+            Debug.Log($"Scenes: {string.Join(", ", buildPlayerOptions.scenes)}");
+
+            BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            BuildSummary summary = report.summary;
+
+            if (summary.result == BuildResult.Succeeded)
+            {
+                Debug.Log($"WebGL build succeeded: {summary.totalSize} bytes");
+                Debug.Log($"Output: {buildPath}");
+                EditorApplication.Exit(0);
+            }
+            else
+            {
+                Debug.LogError($"WebGL build failed: {summary.result}");
+                EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Configure WebGL-specific player settings for optimal web delivery
+        /// </summary>
+        private static void ConfigureWebGLSettings(bool isDevelopment)
+        {
+            // Use Brotli compression for smaller builds (best for web)
+            // Development builds use disabled compression for faster iteration
+            PlayerSettings.WebGL.compressionFormat = isDevelopment 
+                ? WebGLCompressionFormat.Disabled 
+                : WebGLCompressionFormat.Brotli;
+
+            // Use Wasm linker target (required for modern browsers)
+            PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
+
+            // Disable exception handling in release for smaller builds
+            if (!isDevelopment)
+            {
+                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
+            }
+            else
+            {
+                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
+            }
+
+            // Use IL2CPP scripting backend
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
+
+            // Set template to minimal for Flutter integration (no Unity loading bar)
+            PlayerSettings.WebGL.template = "PROJECT:Minimal";
+
+            Debug.Log("WebGL settings configured for Flutter Web integration");
+            Debug.Log($"  Compression: {PlayerSettings.WebGL.compressionFormat}");
+            Debug.Log($"  Linker Target: {PlayerSettings.WebGL.linkerTarget}");
+            Debug.Log($"  Exceptions: {PlayerSettings.WebGL.exceptionSupport}");
+        }
+
+        /// <summary>
+        /// Build for macOS - exports as Xcode project (source) only. IL2CPP is required.
+        /// The game-cli builds the Xcode project and assembles UnityFramework.framework.
         /// </summary>
         [MenuItem("Game Framework/Build macOS")]
         public static void BuildMacos()
@@ -276,10 +378,33 @@ namespace Xraph.GameFramework.Unity.Editor
                 Directory.CreateDirectory(buildPath);
             }
 
+            // Configure macOS settings; require IL2CPP for Xcode project export
+            bool isIL2CPP = ConfigureMacOSSettings();
+            if (!isIL2CPP)
+            {
+                Debug.LogError("macOS build requires IL2CPP scripting backend.");
+                Debug.LogError("Install Mac Build Support (IL2CPP) via Unity Hub > Installs > your version > Add Modules.");
+                Debug.LogError("Then set Edit > Project Settings > Player > macOS > Other Settings > Scripting Backend to IL2CPP.");
+                EditorApplication.Exit(1);
+                return;
+            }
+
+            // Request Xcode project export (mirrors iOS; game-cli assembles UnityFramework from build products)
+            try
+            {
+                EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true");
+                Debug.Log("Requested Xcode project export (CreateXcodeProject=true)");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"SetPlatformSettings failed (Unity 6 Build Profiles may override): {e.Message}");
+            }
+
+            // Always export to build path as Xcode project directory
             BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
             {
                 scenes = GetScenes(),
-                locationPathName = Path.Combine(buildPath, "UnityGame.app"),
+                locationPathName = buildPath,
                 target = BuildTarget.StandaloneOSX,
                 options = BuildOptions.None
             };
@@ -290,6 +415,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Development: {isDevelopment}");
             Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
@@ -298,6 +424,28 @@ namespace Xraph.GameFramework.Unity.Editor
             if (summary.result == BuildResult.Succeeded)
             {
                 Debug.Log($"macOS build succeeded: {summary.totalSize} bytes");
+
+                // Verify Xcode project was produced; fail if not
+                bool hasXcodeProj = false;
+                foreach (string dir in Directory.GetDirectories(buildPath))
+                {
+                    if (dir.EndsWith(".xcodeproj"))
+                    {
+                        hasXcodeProj = true;
+                        Debug.Log($"Xcode project found: {dir}");
+                        break;
+                    }
+                }
+
+                if (!hasXcodeProj)
+                {
+                    Debug.LogError("Build did not produce an Xcode project. A .app bundle was produced instead.");
+                    Debug.LogError("Enable 'Create Xcode Project' in Build Profiles (Edit > Project Settings > Build) for macOS.");
+                    Debug.LogError("Then re-run the build.");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+
                 EditorApplication.Exit(0);
             }
             else
@@ -305,6 +453,42 @@ namespace Xraph.GameFramework.Unity.Editor
                 Debug.LogError($"macOS build failed: {summary.result}");
                 EditorApplication.Exit(1);
             }
+        }
+
+        /// <summary>
+        /// Configure macOS player settings for Flutter integration.
+        /// Returns true if IL2CPP scripting backend is active after configuration.
+        /// </summary>
+        private static bool ConfigureMacOSSettings()
+        {
+            // Try to use IL2CPP scripting backend for macOS (required for UnityFramework)
+            try
+            {
+                PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
+                Debug.Log("Set scripting backend to IL2CPP");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"Could not set IL2CPP backend: {e.Message}");
+                Debug.LogWarning("IL2CPP module may not be installed. Install it via Unity Hub > Installs > Add Modules.");
+            }
+
+            // Verify what backend is actually active
+            var activeBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.Standalone);
+            bool isIL2CPP = activeBackend == ScriptingImplementation.IL2CPP;
+
+            if (!isIL2CPP)
+            {
+                Debug.LogWarning($"Active scripting backend is {activeBackend}, not IL2CPP.");
+                Debug.LogWarning("UnityFramework.framework requires IL2CPP. The build will produce a .app bundle.");
+                Debug.LogWarning("To fix: Install IL2CPP module via Unity Hub, or set IL2CPP in Project Settings > Player > macOS > Other Settings.");
+            }
+
+            // Set macOS build number
+            PlayerSettings.macOS.buildNumber = PlayerSettings.bundleVersion;
+
+            Debug.Log($"macOS settings configured (backend: {activeBackend})");
+            return isIL2CPP;
         }
 
         /// <summary>

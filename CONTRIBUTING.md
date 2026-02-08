@@ -1,6 +1,6 @@
-# Contributing to Flutter Game Framework
+# Contributing to GameFramework
 
-Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to the Flutter Game Framework.
+Thank you for your interest in contributing! This document provides guidelines and instructions for contributing to the GameFramework.
 
 ---
 
@@ -527,6 +527,6 @@ By contributing, you agree that your contributions will be licensed under the MI
 
 ---
 
-**Thank you for contributing to Flutter Game Framework!** 🎮✨
+**Thank you for contributing to GameFramework!** 🎮✨
 
 Every contribution, no matter how small, helps make this project better for everyone.

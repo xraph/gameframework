@@ -8,7 +8,7 @@ using UnityEditor.Build.Reporting;
 namespace Xraph.GameFramework.Unity.Editor
 {
     /// <summary>
-    /// Unity Editor build script for Flutter Game Framework CLI
+    /// Unity Editor build script for GameFramework CLI
     /// This script is called by the game CLI to automate Unity builds
     /// </summary>
     public static class FlutterBuildScript

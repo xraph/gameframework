@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:gameframework/gameframework.dart';
 import 'unreal_controller.dart';
 
-/// Unreal Engine plugin for the Flutter Game Framework
+/// Unreal Engine plugin for the GameFramework
 ///
 /// Registers the Unreal Engine factory with the game framework registry.
 class UnrealEnginePlugin {

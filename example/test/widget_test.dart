@@ -17,7 +17,7 @@ void main() {
 
     // Verify that the app title is displayed in AppBar.
     expect(
-      find.widgetWithText(AppBar, 'Flutter Game Framework'),
+      find.widgetWithText(AppBar, 'GameFramework'),
       findsOneWidget,
     );
 

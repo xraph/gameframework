@@ -1,6 +1,6 @@
 # Unity Streaming Setup Guide
 
-This guide explains how to configure your Unity project for asset streaming with the Flutter Game Framework.
+This guide explains how to configure your Unity project for asset streaming with the GameFramework.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Asset streaming allows you to:
 ## Prerequisites
 
 - Unity 2021.3 LTS or newer (recommended)
-- Flutter Game Framework CLI (`game` command)
+- GameFramework CLI (`game` command)
 - GameFramework Cloud account
 
 ## Step 1: Install Addressables

@@ -155,7 +155,7 @@ sysinfo.txt
 # TextMeshPro
 [Aa]ssets/TextMesh*Pro/
 
-# Flutter Game Framework - Keep these files
+# GameFramework - Keep these files
 !Assets/game-framework/
 !Assets/game-framework/**
 

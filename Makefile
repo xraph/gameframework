@@ -1,4 +1,4 @@
-# Flutter Game Framework - Makefile
+# GameFramework - Makefile
 # Monorepo build automation for Dart workspace
 
 .PHONY: help setup bootstrap test test-package test-watch analyze format format-check clean clean-deep doctor list-packages coverage lint prebuild example build-android build-ios version version-check version-bump publish-check publish-dry-run publish-gameframework publish-unity publish-unreal publish-all release-prepare release-tag gameframework unity unreal all check ci
@@ -20,7 +20,7 @@ NC := \033[0m # No Color
 ##@ General
 
 help: ## Display this help message
-	@echo "Flutter Game Framework - Monorepo Build Automation"
+	@echo "GameFramework - Monorepo Build Automation"
 	@echo ""
 	@echo "$(BLUE)Workspace Packages:$(NC)"
 	@echo "  - packages/gameframework"
@@ -192,7 +192,7 @@ build-ios: ## Build example for iOS (macOS only)
 ##@ Release
 
 version: ## Show versions of all packages
-	@echo "$(BLUE)Flutter Game Framework - Package Versions$(NC)"
+	@echo "$(BLUE)GameFramework - Package Versions$(NC)"
 	@echo ""
 	@for pkg in $(PACKAGES); do \
 		name=$$(grep '^name:' $$pkg/pubspec.yaml | awk '{print $$2}'); \

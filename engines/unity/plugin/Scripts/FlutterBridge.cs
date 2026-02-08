@@ -288,8 +288,12 @@ namespace Xraph.GameFramework.Unity
                 SendToFlutterAndroid(target, method, data);
 #elif UNITY_IOS && !UNITY_EDITOR
                 SendToFlutterIOS(target, method, data);
+#elif UNITY_WEBGL && !UNITY_EDITOR
+                SendToFlutterWebGL(target, method, data);
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+                SendToFlutterMacOS(target, method, data);
 #else
-                Debug.LogWarning("FlutterBridge: SendToFlutter only works on Android/iOS builds");
+                Debug.LogWarning("FlutterBridge: SendToFlutter only works on Android/iOS/WebGL/macOS builds");
 #endif
             }
             catch (Exception e)
@@ -457,6 +461,29 @@ namespace Xraph.GameFramework.Unity
         private static extern void SendMessageToFlutter(string target, string method, string data);
 
         private void SendToFlutterIOS(string target, string method, string data)
+        {
+            SendMessageToFlutter(target, method, data);
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [DllImport("__Internal")]
+        private static extern void SendMessageToFlutter(string target, string method, string data);
+
+        [DllImport("__Internal")]
+        private static extern void SendSceneLoadedToFlutter(string name, int buildIndex);
+
+        private void SendToFlutterWebGL(string target, string method, string data)
+        {
+            SendMessageToFlutter(target, method, data);
+        }
+#endif
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        [DllImport("__Internal")]
+        private static extern void SendMessageToFlutter(string target, string method, string data);
+
+        private void SendToFlutterMacOS(string target, string method, string data)
         {
             SendMessageToFlutter(target, method, data);
         }

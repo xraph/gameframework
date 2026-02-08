@@ -1,6 +1,6 @@
-# Flutter Game Framework - Example App
+# GameFramework - Example App
 
-A comprehensive example demonstrating the Flutter Game Framework capabilities.
+A comprehensive example demonstrating the GameFramework capabilities.
 
 ## Features Demonstrated
 

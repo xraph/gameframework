@@ -18,7 +18,7 @@ If you discover a security vulnerability, please follow these steps:
 
 Send an email to **security@xraph.com** (or the appropriate security contact) with:
 
-- **Subject**: `[SECURITY] Flutter Game Framework - Brief Description`
+- **Subject**: `[SECURITY] GameFramework - Brief Description`
 - **Description**: Detailed description of the vulnerability
 - **Impact**: What an attacker could achieve
 - **Reproduction**: Step-by-step instructions to reproduce
@@ -49,7 +49,7 @@ We will credit you in the security advisory unless you prefer to remain anonymou
 
 ### For Users
 
-When using Flutter Game Framework:
+When using GameFramework:
 
 1. **Keep Updated**: Always use the latest version
 2. **Validate Input**: Sanitize all data sent to game engines

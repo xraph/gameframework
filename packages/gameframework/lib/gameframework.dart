@@ -1,4 +1,4 @@
-/// Flutter Game Framework
+/// GameFramework
 ///
 /// A modular, unified framework for embedding game engines
 /// (Unity, Unreal Engine, and potentially others) into Flutter applications.
@@ -54,5 +54,5 @@ export 'src/exceptions/game_engine_exception.dart';
 // Utils
 export 'src/utils/platform_info.dart';
 
-/// Current version of the Flutter Game Framework
+/// Current version of the GameFramework
 const String gameFrameworkVersion = '0.0.1';

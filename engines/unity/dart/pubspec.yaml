@@ -1,6 +1,6 @@
 name: gameframework_unity
-description: Unity Engine plugin for Flutter Game Framework. Provides Unity integration with bidirectional communication, AR Foundation support, and WebGL capabilities.
-version: 0.0.2
+description: Unity Engine plugin for GameFramework. Provides Unity integration with bidirectional communication, AR Foundation support, and WebGL capabilities.
+version: 0.0.3
 homepage: https://github.com/xraph/gameframework
 repository: https://github.com/xraph/gameframework
 issue_tracker: https://github.com/xraph/gameframework/issues

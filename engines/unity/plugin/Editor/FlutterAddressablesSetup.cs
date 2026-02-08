@@ -22,7 +22,7 @@ namespace Xraph.GameFramework.Unity.Editor
         private const string STREAMING_CONFIG_PATH = "Assets/GameFramework/StreamingConfig.asset";
         
         /// <summary>
-        /// Setup Addressables with Flutter Game Framework defaults
+        /// Setup Addressables with GameFramework defaults
         /// </summary>
         [MenuItem("Game Framework/Streaming/Setup Addressables", priority = 100)]
         public static void SetupAddressables()
@@ -31,7 +31,7 @@ namespace Xraph.GameFramework.Unity.Editor
             Debug.Log("Addressables package not installed. Installing...");
             InstallAddressablesPackage();
 #else
-            Debug.Log("Setting up Addressables for Flutter Game Framework...");
+            Debug.Log("Setting up Addressables for GameFramework...");
             
             // 1. Create or get AddressableAssetSettings
             var settings = AddressableAssetSettingsDefaultObject.Settings;
@@ -56,7 +56,7 @@ namespace Xraph.GameFramework.Unity.Editor
             Debug.Log("Addressables setup complete!");
             EditorUtility.DisplayDialog(
                 "Addressables Setup Complete",
-                "Flutter Game Framework Addressables configuration is ready.\n\n" +
+                "GameFramework Addressables configuration is ready.\n\n" +
                 "Next steps:\n" +
                 "1. Mark your assets as Addressable\n" +
                 "2. Assign assets to Base or Streaming groups\n" +
