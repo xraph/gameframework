@@ -350,8 +350,8 @@ namespace Xraph.GameFramework.Unity.Editor
         }
 
         /// <summary>
-        /// Build for macOS - exports as Xcode project (source) only. IL2CPP is required.
-        /// The game-cli builds the Xcode project and assembles UnityFramework.framework.
+        /// Build for macOS - exports as Xcode project (source) when IL2CPP is available,
+        /// or as .app bundle when using Mono. The game-cli handles both cases.
         /// </summary>
         [MenuItem("Game Framework/Build macOS")]
         public static void BuildMacos()
@@ -378,33 +378,49 @@ namespace Xraph.GameFramework.Unity.Editor
                 Directory.CreateDirectory(buildPath);
             }
 
-            // Configure macOS settings; require IL2CPP for Xcode project export
+            // Configure macOS settings (attempts IL2CPP + Xcode project)
             bool isIL2CPP = ConfigureMacOSSettings();
-            if (!isIL2CPP)
+
+            // When IL2CPP is active, request an Xcode project export (mirrors iOS).
+            // With Mono, Unity only produces a .app bundle; the CLI will extract
+            // UnityFramework from it and warn the user to switch to IL2CPP.
+            bool xcodeProjectRequested = false;
+            if (isIL2CPP)
             {
-                Debug.LogError("macOS build requires IL2CPP scripting backend.");
-                Debug.LogError("Install Mac Build Support (IL2CPP) via Unity Hub > Installs > your version > Add Modules.");
-                Debug.LogError("Then set Edit > Project Settings > Player > macOS > Other Settings > Scripting Backend to IL2CPP.");
-                EditorApplication.Exit(1);
-                return;
+                try
+                {
+                    EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true");
+                    xcodeProjectRequested = true;
+                    Debug.Log("Requested Xcode project export (IL2CPP + CreateXcodeProject)");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"SetPlatformSettings failed (Unity 6 Build Profiles may override): {e.Message}");
+                }
             }
 
-            // Request Xcode project export (mirrors iOS; game-cli assembles UnityFramework from build products)
-            try
+            // Determine the output path.
+            // For Xcode project: the build path is used as the project directory.
+            // For .app binary: Unity expects the path to end with .app.
+            string appName = PlayerSettings.productName;
+            if (string.IsNullOrEmpty(appName)) appName = "UnityGame";
+
+            string locationPath;
+            if (xcodeProjectRequested)
             {
-                EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true");
-                Debug.Log("Requested Xcode project export (CreateXcodeProject=true)");
+                // Xcode project mode: Unity puts the .xcodeproj inside this directory
+                locationPath = buildPath;
             }
-            catch (System.Exception e)
+            else
             {
-                Debug.LogWarning($"SetPlatformSettings failed (Unity 6 Build Profiles may override): {e.Message}");
+                // .app mode: Unity needs a path ending in .app
+                locationPath = Path.Combine(buildPath, appName + ".app");
             }
 
-            // Always export to build path as Xcode project directory
             BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
             {
                 scenes = GetScenes(),
-                locationPathName = buildPath,
+                locationPathName = locationPath,
                 target = BuildTarget.StandaloneOSX,
                 options = BuildOptions.None
             };
@@ -414,7 +430,9 @@ namespace Xraph.GameFramework.Unity.Editor
                 buildPlayerOptions.options |= BuildOptions.Development;
             }
 
-            Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Building to: {locationPath}");
+            Debug.Log($"Xcode project requested: {xcodeProjectRequested}");
+            Debug.Log($"IL2CPP: {isIL2CPP}");
             Debug.Log($"Development: {isDevelopment}");
             Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
@@ -425,7 +443,7 @@ namespace Xraph.GameFramework.Unity.Editor
             {
                 Debug.Log($"macOS build succeeded: {summary.totalSize} bytes");
 
-                // Verify Xcode project was produced; fail if not
+                // Verify output type
                 bool hasXcodeProj = false;
                 foreach (string dir in Directory.GetDirectories(buildPath))
                 {
@@ -439,11 +457,10 @@ namespace Xraph.GameFramework.Unity.Editor
 
                 if (!hasXcodeProj)
                 {
-                    Debug.LogError("Build did not produce an Xcode project. A .app bundle was produced instead.");
-                    Debug.LogError("Enable 'Create Xcode Project' in Build Profiles (Edit > Project Settings > Build) for macOS.");
-                    Debug.LogError("Then re-run the build.");
-                    EditorApplication.Exit(1);
-                    return;
+                    Debug.LogWarning("Build produced .app instead of Xcode project.");
+                    Debug.LogWarning("This can happen when using Mono or when CreateXcodeProject is overridden by Build Profiles.");
+                    Debug.LogWarning("For best results, set IL2CPP as the scripting backend and enable 'Create Xcode Project' in Build Profiles.");
+                    Debug.Log("The game-cli will extract UnityFramework from the .app bundle as a fallback.");
                 }
 
                 EditorApplication.Exit(0);

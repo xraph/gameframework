@@ -153,7 +153,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen>
 
   // UI State
   bool _isPanelExpanded = false;
-  bool _showMiniHud = true;
+  final bool _showMiniHud = true;
   late AnimationController _panelAnimationController;
   late Animation<double> _panelAnimation;
 
@@ -294,7 +294,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            const Icon(
               Icons.speed,
               color: Colors.amber,
               size: 18,
@@ -420,7 +420,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    Icon(Icons.speed, color: Colors.amber, size: 20),
+                    const Icon(Icons.speed, color: Colors.amber, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: SliderTheme(
@@ -602,7 +602,7 @@ class _UnityExampleScreenState extends State<UnityExampleScreen>
             const SizedBox(width: 4),
             Text(
               label,
-              style: TextStyle(color: Colors.white54, fontSize: 11),
+              style: const TextStyle(color: Colors.white54, fontSize: 11),
             ),
           ],
         ),

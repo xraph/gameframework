@@ -260,7 +260,7 @@ Game Engine (Unity/Unreal)
 |----------|--------------|-------|--------|--------|
 | Android  | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
 | iOS      | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
-| Web      | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
+| Web      | ✅ Ready     | ✅ Ready | ⏳ Planned | Stable   |
 | macOS    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
 | Windows  | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
 | Linux    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |

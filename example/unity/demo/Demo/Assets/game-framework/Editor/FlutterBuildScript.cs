@@ -31,6 +31,34 @@ namespace Xraph.GameFramework.Unity.Editor
             string[] args = Environment.GetCommandLineArgs();
             return args.Contains("-development");
         }
+        
+        /// <summary>
+        /// Check if streaming/addressables build is enabled
+        /// </summary>
+        private static bool IsStreamingEnabled()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            return args.Contains("-enableStreaming");
+        }
+        
+        /// <summary>
+        /// Build addressables if streaming is enabled
+        /// </summary>
+        private static bool BuildAddressablesIfEnabled(BuildTarget target)
+        {
+            if (!IsStreamingEnabled())
+            {
+                return true; // Not enabled, skip
+            }
+            
+#if ADDRESSABLES_INSTALLED
+            Debug.Log("Streaming enabled - building Addressables first...");
+            return FlutterAddressablesBuildScript.BuildAddressablesForPlatform(target);
+#else
+            Debug.LogWarning("Streaming is enabled but Addressables package is not installed. Skipping Addressables build.");
+            return true;
+#endif
+        }
 
         private static string[] GetScenes()
         {
@@ -100,6 +128,18 @@ namespace Xraph.GameFramework.Unity.Editor
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
             string buildConfiguration = GetBuildConfiguration();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.Android))
+                {
+                    Debug.LogError("Addressables build failed, aborting Android build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             // Ensure build path exists
             if (!Directory.Exists(buildPath))
@@ -129,6 +169,7 @@ namespace Xraph.GameFramework.Unity.Editor
             Debug.Log($"Building to: {buildPath}");
             Debug.Log($"Development: {isDevelopment}");
             Debug.Log($"Build Configuration: {buildConfiguration}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
             Debug.Log($"Scenes: {string.Join(", ", buildPlayerOptions.scenes)}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
@@ -157,6 +198,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.iOS))
+                {
+                    Debug.LogError("Addressables build failed, aborting iOS build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -178,6 +231,7 @@ namespace Xraph.GameFramework.Unity.Editor
 
             Debug.Log($"Building to: {buildPath}");
             Debug.Log($"Development: {isDevelopment}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -195,26 +249,41 @@ namespace Xraph.GameFramework.Unity.Editor
         }
 
         /// <summary>
-        /// Build for macOS
+        /// Build for WebGL - exports Unity WebGL build for Flutter Web
         /// </summary>
-        [MenuItem("Game Framework/Build macOS")]
-        public static void BuildMacos()
+        [MenuItem("Game Framework/Build WebGL")]
+        public static void BuildWebGL()
         {
-            Debug.Log("Starting macOS build for Flutter...");
+            Debug.Log("Starting WebGL build for Flutter Web...");
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.WebGL))
+                {
+                    Debug.LogError("Addressables build failed, aborting WebGL build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
                 Directory.CreateDirectory(buildPath);
             }
 
+            // Configure WebGL-specific settings for optimal web delivery
+            ConfigureWebGLSettings(isDevelopment);
+
             BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
             {
                 scenes = GetScenes(),
-                locationPathName = Path.Combine(buildPath, "UnityGame.app"),
-                target = BuildTarget.StandaloneOSX,
+                locationPathName = buildPath,
+                target = BuildTarget.WebGL,
                 options = BuildOptions.None
             };
 
@@ -224,6 +293,148 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Development: {isDevelopment}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
+            Debug.Log($"Scenes: {string.Join(", ", buildPlayerOptions.scenes)}");
+
+            BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+            BuildSummary summary = report.summary;
+
+            if (summary.result == BuildResult.Succeeded)
+            {
+                Debug.Log($"WebGL build succeeded: {summary.totalSize} bytes");
+                Debug.Log($"Output: {buildPath}");
+                EditorApplication.Exit(0);
+            }
+            else
+            {
+                Debug.LogError($"WebGL build failed: {summary.result}");
+                EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Configure WebGL-specific player settings for optimal web delivery
+        /// </summary>
+        private static void ConfigureWebGLSettings(bool isDevelopment)
+        {
+            // Use Brotli compression for smaller builds (best for web)
+            // Development builds use disabled compression for faster iteration
+            PlayerSettings.WebGL.compressionFormat = isDevelopment 
+                ? WebGLCompressionFormat.Disabled 
+                : WebGLCompressionFormat.Brotli;
+
+            // Use Wasm linker target (required for modern browsers)
+            PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
+
+            // Disable exception handling in release for smaller builds
+            if (!isDevelopment)
+            {
+                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
+            }
+            else
+            {
+                PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
+            }
+
+            // Use IL2CPP scripting backend
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.WebGL, ScriptingImplementation.IL2CPP);
+
+            // Set template to minimal for Flutter integration (no Unity loading bar)
+            PlayerSettings.WebGL.template = "PROJECT:Minimal";
+
+            Debug.Log("WebGL settings configured for Flutter Web integration");
+            Debug.Log($"  Compression: {PlayerSettings.WebGL.compressionFormat}");
+            Debug.Log($"  Linker Target: {PlayerSettings.WebGL.linkerTarget}");
+            Debug.Log($"  Exceptions: {PlayerSettings.WebGL.exceptionSupport}");
+        }
+
+        /// <summary>
+        /// Build for macOS - exports as Xcode project (source) when IL2CPP is available,
+        /// or as .app bundle when using Mono. The game-cli handles both cases.
+        /// </summary>
+        [MenuItem("Game Framework/Build macOS")]
+        public static void BuildMacos()
+        {
+            Debug.Log("Starting macOS build for Flutter...");
+
+            string buildPath = GetBuildPath();
+            bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneOSX))
+                {
+                    Debug.LogError("Addressables build failed, aborting macOS build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
+
+            if (!Directory.Exists(buildPath))
+            {
+                Directory.CreateDirectory(buildPath);
+            }
+
+            // Configure macOS settings (attempts IL2CPP + Xcode project)
+            bool isIL2CPP = ConfigureMacOSSettings();
+
+            // When IL2CPP is active, request an Xcode project export (mirrors iOS).
+            // With Mono, Unity only produces a .app bundle; the CLI will extract
+            // UnityFramework from it and warn the user to switch to IL2CPP.
+            bool xcodeProjectRequested = false;
+            if (isIL2CPP)
+            {
+                try
+                {
+                    EditorUserBuildSettings.SetPlatformSettings("OSXUniversal", "CreateXcodeProject", "true");
+                    xcodeProjectRequested = true;
+                    Debug.Log("Requested Xcode project export (IL2CPP + CreateXcodeProject)");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"SetPlatformSettings failed (Unity 6 Build Profiles may override): {e.Message}");
+                }
+            }
+
+            // Determine the output path.
+            // For Xcode project: the build path is used as the project directory.
+            // For .app binary: Unity expects the path to end with .app.
+            string appName = PlayerSettings.productName;
+            if (string.IsNullOrEmpty(appName)) appName = "UnityGame";
+
+            string locationPath;
+            if (xcodeProjectRequested)
+            {
+                // Xcode project mode: Unity puts the .xcodeproj inside this directory
+                locationPath = buildPath;
+            }
+            else
+            {
+                // .app mode: Unity needs a path ending in .app
+                locationPath = Path.Combine(buildPath, appName + ".app");
+            }
+
+            BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
+            {
+                scenes = GetScenes(),
+                locationPathName = locationPath,
+                target = BuildTarget.StandaloneOSX,
+                options = BuildOptions.None
+            };
+
+            if (isDevelopment)
+            {
+                buildPlayerOptions.options |= BuildOptions.Development;
+            }
+
+            Debug.Log($"Building to: {locationPath}");
+            Debug.Log($"Xcode project requested: {xcodeProjectRequested}");
+            Debug.Log($"IL2CPP: {isIL2CPP}");
+            Debug.Log($"Development: {isDevelopment}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -231,6 +442,27 @@ namespace Xraph.GameFramework.Unity.Editor
             if (summary.result == BuildResult.Succeeded)
             {
                 Debug.Log($"macOS build succeeded: {summary.totalSize} bytes");
+
+                // Verify output type
+                bool hasXcodeProj = false;
+                foreach (string dir in Directory.GetDirectories(buildPath))
+                {
+                    if (dir.EndsWith(".xcodeproj"))
+                    {
+                        hasXcodeProj = true;
+                        Debug.Log($"Xcode project found: {dir}");
+                        break;
+                    }
+                }
+
+                if (!hasXcodeProj)
+                {
+                    Debug.LogWarning("Build produced .app instead of Xcode project.");
+                    Debug.LogWarning("This can happen when using Mono or when CreateXcodeProject is overridden by Build Profiles.");
+                    Debug.LogWarning("For best results, set IL2CPP as the scripting backend and enable 'Create Xcode Project' in Build Profiles.");
+                    Debug.Log("The game-cli will extract UnityFramework from the .app bundle as a fallback.");
+                }
+
                 EditorApplication.Exit(0);
             }
             else
@@ -238,6 +470,42 @@ namespace Xraph.GameFramework.Unity.Editor
                 Debug.LogError($"macOS build failed: {summary.result}");
                 EditorApplication.Exit(1);
             }
+        }
+
+        /// <summary>
+        /// Configure macOS player settings for Flutter integration.
+        /// Returns true if IL2CPP scripting backend is active after configuration.
+        /// </summary>
+        private static bool ConfigureMacOSSettings()
+        {
+            // Try to use IL2CPP scripting backend for macOS (required for UnityFramework)
+            try
+            {
+                PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
+                Debug.Log("Set scripting backend to IL2CPP");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"Could not set IL2CPP backend: {e.Message}");
+                Debug.LogWarning("IL2CPP module may not be installed. Install it via Unity Hub > Installs > Add Modules.");
+            }
+
+            // Verify what backend is actually active
+            var activeBackend = PlayerSettings.GetScriptingBackend(BuildTargetGroup.Standalone);
+            bool isIL2CPP = activeBackend == ScriptingImplementation.IL2CPP;
+
+            if (!isIL2CPP)
+            {
+                Debug.LogWarning($"Active scripting backend is {activeBackend}, not IL2CPP.");
+                Debug.LogWarning("UnityFramework.framework requires IL2CPP. The build will produce a .app bundle.");
+                Debug.LogWarning("To fix: Install IL2CPP module via Unity Hub, or set IL2CPP in Project Settings > Player > macOS > Other Settings.");
+            }
+
+            // Set macOS build number
+            PlayerSettings.macOS.buildNumber = PlayerSettings.bundleVersion;
+
+            Debug.Log($"macOS settings configured (backend: {activeBackend})");
+            return isIL2CPP;
         }
 
         /// <summary>
@@ -250,6 +518,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneWindows64))
+                {
+                    Debug.LogError("Addressables build failed, aborting Windows build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -270,6 +550,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;
@@ -296,6 +577,18 @@ namespace Xraph.GameFramework.Unity.Editor
 
             string buildPath = GetBuildPath();
             bool isDevelopment = IsDevelopmentBuild();
+            bool streamingEnabled = IsStreamingEnabled();
+
+            // Build addressables first if streaming is enabled
+            if (streamingEnabled)
+            {
+                if (!BuildAddressablesIfEnabled(BuildTarget.StandaloneLinux64))
+                {
+                    Debug.LogError("Addressables build failed, aborting Linux build");
+                    EditorApplication.Exit(1);
+                    return;
+                }
+            }
 
             if (!Directory.Exists(buildPath))
             {
@@ -316,6 +609,7 @@ namespace Xraph.GameFramework.Unity.Editor
             }
 
             Debug.Log($"Building to: {buildPath}");
+            Debug.Log($"Streaming Enabled: {streamingEnabled}");
 
             BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
             BuildSummary summary = report.summary;

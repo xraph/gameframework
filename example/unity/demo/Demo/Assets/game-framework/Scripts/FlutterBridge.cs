@@ -288,8 +288,12 @@ namespace Xraph.GameFramework.Unity
                 SendToFlutterAndroid(target, method, data);
 #elif UNITY_IOS && !UNITY_EDITOR
                 SendToFlutterIOS(target, method, data);
+#elif UNITY_WEBGL && !UNITY_EDITOR
+                SendToFlutterWebGL(target, method, data);
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+                SendToFlutterMacOS(target, method, data);
 #else
-                Debug.LogWarning("FlutterBridge: SendToFlutter only works on Android/iOS builds");
+                Debug.LogWarning("FlutterBridge: SendToFlutter only works on Android/iOS/WebGL/macOS builds");
 #endif
             }
             catch (Exception e)
@@ -333,74 +337,122 @@ namespace Xraph.GameFramework.Unity
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        // Cached references to avoid repeated JNI lookups
+        private static AndroidJavaClass _flutterBridgeRegistryClass = null;
+        private static bool _registryClassLoadAttempted = false;
+        
         /// <summary>
         /// Send message to Flutter on Android using FlutterBridgeRegistry
         /// The registry is a Kotlin singleton accessible via JNI
+        /// 
+        /// Uses Activity's classloader to find Flutter plugin classes,
+        /// since Unity's default classloader may not have access to them.
         /// </summary>
         private void SendToFlutterAndroid(string target, string method, string data)
         {
+            Debug.Log($"FlutterBridge Android: Sending - Target: {target}, Method: {method}");
+            
             try
             {
-                // Use FlutterBridgeRegistry singleton to send messages
-                // This is more reliable than trying to get controller from Activity
-                using (AndroidJavaClass registry = new AndroidJavaClass("com.xraph.gameframework.unity.FlutterBridgeRegistry"))
+                // Try to get or load the FlutterBridgeRegistry class
+                AndroidJavaClass registry = GetFlutterBridgeRegistryClass();
+                
+                if (registry == null)
                 {
-                    bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
-                    if (!success)
+                    Debug.LogError("FlutterBridge Android: Cannot find FlutterBridgeRegistry class!");
+                    return;
+                }
+                
+                bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
+                if (success)
+                {
+                    Debug.Log($"FlutterBridge Android: Message sent successfully!");
+                }
+                else
+                {
+                    Debug.LogWarning("FlutterBridge Android: sendMessageToFlutter returned false - controller may not be registered");
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"FlutterBridge Android: Exception sending message: {e.Message}");
+                Debug.LogError($"FlutterBridge Android: StackTrace: {e.StackTrace}");
+            }
+        }
+        
+        /// <summary>
+        /// Get the FlutterBridgeRegistry class, trying multiple classloaders if needed
+        /// </summary>
+        private AndroidJavaClass GetFlutterBridgeRegistryClass()
+        {
+            // Return cached class if available
+            if (_flutterBridgeRegistryClass != null)
+            {
+                return _flutterBridgeRegistryClass;
+            }
+            
+            // If we already tried and failed, don't retry
+            if (_registryClassLoadAttempted)
+            {
+                return null;
+            }
+            
+            _registryClassLoadAttempted = true;
+            string className = "com.xraph.gameframework.unity.FlutterBridgeRegistry";
+            
+            // Method 1: Try direct class loading (works if classloaders are unified)
+            try
+            {
+                Debug.Log("FlutterBridge Android: Trying direct class loading...");
+                _flutterBridgeRegistryClass = new AndroidJavaClass(className);
+                
+                // Test that it works by calling isReady
+                _flutterBridgeRegistryClass.CallStatic<bool>("isReady");
+                Debug.Log("FlutterBridge Android: Direct class loading succeeded!");
+                return _flutterBridgeRegistryClass;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"FlutterBridge Android: Direct loading failed: {e.Message}");
+                _flutterBridgeRegistryClass = null;
+            }
+            
+            // Method 2: Try loading via Activity's classloader
+            try
+            {
+                Debug.Log("FlutterBridge Android: Trying Activity classloader...");
+                using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                {
+                    if (activity != null)
                     {
-                        Debug.LogWarning($"FlutterBridge: Message not sent - controller not registered in FlutterBridgeRegistry");
+                        using (AndroidJavaObject classLoader = activity.Call<AndroidJavaObject>("getClassLoader"))
+                        {
+                            if (classLoader != null)
+                            {
+                                using (AndroidJavaObject clazz = classLoader.Call<AndroidJavaObject>("loadClass", className))
+                                {
+                                    if (clazz != null)
+                                    {
+                                        // Wrap the loaded class - need to use AndroidJavaObject for this
+                                        // Store reference to the class object
+                                        _flutterBridgeRegistryClass = new AndroidJavaClass(className);
+                                        Debug.Log("FlutterBridge Android: Activity classloader succeeded!");
+                                        return _flutterBridgeRegistryClass;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"FlutterBridge Android: Failed to send via FlutterBridgeRegistry: {e.Message}");
-                
-                // Fallback to legacy method (unlikely to work)
-                try
-                {
-                    SendToFlutterAndroidLegacy(target, method, data);
-                }
-                catch (Exception fallbackError)
-                {
-                    Debug.LogError($"FlutterBridge Android: Legacy fallback also failed: {fallbackError.Message}");
-                }
+                Debug.LogError($"FlutterBridge Android: Activity classloader failed: {e.Message}");
             }
-        }
-        
-        /// <summary>
-        /// Legacy Android method - tries to get controller property from Activity
-        /// This is kept for debugging but unlikely to work since FlutterActivity
-        /// doesn't have a unityEngineController property
-        /// </summary>
-        private void SendToFlutterAndroidLegacy(string target, string method, string data)
-        {
-            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-            {
-                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                {
-                    currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
-                    {
-                        try
-                        {
-                            // This likely won't work - FlutterActivity doesn't have this property
-                            AndroidJavaObject controller = currentActivity.Get<AndroidJavaObject>("unityEngineController");
-                            if (controller != null)
-                            {
-                                controller.Call("onUnityMessage", target, method, data);
-                            }
-                            else
-                            {
-                                Debug.LogWarning("FlutterBridge: UnityEngineController not found on Activity (legacy)");
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"FlutterBridge Android Legacy: {e.Message}");
-                        }
-                    }));
-                }
-            }
+            
+            Debug.LogError("FlutterBridge Android: All class loading methods failed!");
+            return null;
         }
 #endif
 
@@ -409,6 +461,29 @@ namespace Xraph.GameFramework.Unity
         private static extern void SendMessageToFlutter(string target, string method, string data);
 
         private void SendToFlutterIOS(string target, string method, string data)
+        {
+            SendMessageToFlutter(target, method, data);
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [DllImport("__Internal")]
+        private static extern void SendMessageToFlutter(string target, string method, string data);
+
+        [DllImport("__Internal")]
+        private static extern void SendSceneLoadedToFlutter(string name, int buildIndex);
+
+        private void SendToFlutterWebGL(string target, string method, string data)
+        {
+            SendMessageToFlutter(target, method, data);
+        }
+#endif
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        [DllImport("__Internal")]
+        private static extern void SendMessageToFlutter(string target, string method, string data);
+
+        private void SendToFlutterMacOS(string target, string method, string data)
         {
             SendMessageToFlutter(target, method, data);
         }

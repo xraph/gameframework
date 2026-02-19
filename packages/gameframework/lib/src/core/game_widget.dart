@@ -221,6 +221,23 @@ class _GameWidgetState extends State<GameWidget> {
   Widget _buildPlatformView() {
     final viewType = 'com.xraph.gameframework/${widget.engineType.identifier}';
 
+    // IMPORTANT: kIsWeb must be checked first. On web (Chrome/macOS),
+    // defaultTargetPlatform returns TargetPlatform.macOS which would
+    // incorrectly select AppKitView instead of HtmlElementView.
+    if (kIsWeb) {
+      // On web the view factory is registered inside _initializeEngine (post-frame).
+      // We must not render HtmlElementView before the factory is registered, or
+      // Flutter Web throws "unregistered_view_type".
+      if (!_isEngineReady) {
+        return const SizedBox.expand();
+      }
+      // Web implementation uses HtmlElementView.
+      // The web controller registers its HTML element with viewType_viewId.
+      return HtmlElementView(
+        viewType: '${viewType}_$_viewId',
+      );
+    }
+
     // Platform-specific view creation
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _buildAndroidPlatformView(viewType);
@@ -239,13 +256,6 @@ class _GameWidgetState extends State<GameWidget> {
         creationParams: widget.config.toMap(),
         creationParamsCodec: const StandardMessageCodec(),
         gestureRecognizers: widget.gestureRecognizers,
-      );
-    } else if (kIsWeb) {
-      // Web implementation uses HtmlElementView.
-      // The web controller must register its HTML element with the given viewType.
-      // The engine plugin is responsible for registering the platform view factory.
-      return HtmlElementView(
-        viewType: '${viewType}_$_viewId',
       );
     } else {
       // Unsupported platform

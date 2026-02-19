@@ -53,6 +53,42 @@ namespace Xraph.GameFramework.Unity
         private static extern void _notifyUnityReady();
 #endif
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL Native Methods (implemented in FlutterBridge.jslib)
+        [DllImport("__Internal")]
+        private static extern void _sendMessageToFlutter(string message);
+
+        [DllImport("__Internal")]
+        private static extern void _showHostMainWindow();
+
+        [DllImport("__Internal")]
+        private static extern void _unloadUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _quitUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _notifyUnityReady();
+#endif
+
+#if UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        // macOS Native Methods (implemented in FlutterBridge.mm)
+        [DllImport("__Internal")]
+        private static extern void _sendMessageToFlutter(string message);
+
+        [DllImport("__Internal")]
+        private static extern void _showHostMainWindow();
+
+        [DllImport("__Internal")]
+        private static extern void _unloadUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _quitUnity();
+
+        [DllImport("__Internal")]
+        private static extern void _notifyUnityReady();
+#endif
+
         /// <summary>
         /// Initialize the native API
         /// Call this once at app startup
@@ -90,6 +126,10 @@ namespace Xraph.GameFramework.Unity
             _notifyUnityReady();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "onReady", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _notifyUnityReady();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _notifyUnityReady();
 #endif
 
             OnUnityReady?.Invoke();
@@ -113,6 +153,10 @@ namespace Xraph.GameFramework.Unity
             _sendMessageToFlutter(message);
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "onMessage", message);
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _sendMessageToFlutter(message);
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _sendMessageToFlutter(message);
 #elif UNITY_EDITOR
             Debug.Log($"NativeAPI [Editor]: Would send to Flutter: {message}");
 #else
@@ -148,6 +192,10 @@ namespace Xraph.GameFramework.Unity
 #elif UNITY_ANDROID && !UNITY_EDITOR
             // On Android, call the activity method
             SendToFlutterAndroid("Unity", "showHostWindow", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _showHostMainWindow();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _showHostMainWindow();
 #endif
         }
 
@@ -162,6 +210,10 @@ namespace Xraph.GameFramework.Unity
             _unloadUnity();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "unload", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _unloadUnity();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _unloadUnity();
 #endif
         }
 
@@ -176,6 +228,10 @@ namespace Xraph.GameFramework.Unity
             _quitUnity();
 #elif UNITY_ANDROID && !UNITY_EDITOR
             SendToFlutterAndroid("Unity", "quit", "");
+#elif UNITY_WEBGL && !UNITY_EDITOR
+            _quitUnity();
+#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+            _quitUnity();
 #endif
 
             Application.Quit();
@@ -230,75 +286,82 @@ namespace Xraph.GameFramework.Unity
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        // Cached reference to FlutterBridgeRegistry class
+        private static AndroidJavaClass _registryClass = null;
+        private static bool _registryClassLoadAttempted = false;
+        
         /// <summary>
         /// Android-specific method to send messages to Flutter
         /// Uses FlutterBridgeRegistry singleton which is accessible via JNI
         /// </summary>
         private static void SendToFlutterAndroid(string target, string method, string data)
         {
+            Debug.Log($"NativeAPI Android: Sending - Target: {target}, Method: {method}");
+            
             try
             {
-                // Use FlutterBridgeRegistry to send messages - this is a static singleton
-                // accessible from Unity C# via AndroidJavaClass
-                using (AndroidJavaClass registry = new AndroidJavaClass("com.xraph.gameframework.unity.FlutterBridgeRegistry"))
+                AndroidJavaClass registry = GetFlutterBridgeRegistryClass();
+                
+                if (registry == null)
                 {
-                    bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
-                    if (!success)
-                    {
-                        Debug.LogWarning($"NativeAPI: FlutterBridgeRegistry.sendMessageToFlutter returned false - controller not registered");
-                    }
+                    Debug.LogError("NativeAPI Android: Cannot find FlutterBridgeRegistry class!");
+                    return;
+                }
+                
+                bool success = registry.CallStatic<bool>("sendMessageToFlutter", target, method, data);
+                if (success)
+                {
+                    Debug.Log("NativeAPI Android: Message sent successfully!");
+                }
+                else
+                {
+                    Debug.LogWarning("NativeAPI Android: sendMessageToFlutter returned false - controller may not be registered");
                 }
             }
             catch (Exception e)
             {
-                Debug.LogError($"NativeAPI Android: Failed to send message via FlutterBridgeRegistry: {e.Message}\n{e.StackTrace}");
-                
-                // Fallback: Try the old Activity-based method (for backwards compatibility)
-                try
-                {
-                    SendToFlutterAndroidLegacy(target, method, data);
-                }
-                catch (Exception fallbackError)
-                {
-                    Debug.LogError($"NativeAPI Android: Fallback also failed: {fallbackError.Message}");
-                }
+                Debug.LogError($"NativeAPI Android: Exception sending message: {e.Message}");
+                Debug.LogError($"NativeAPI Android: StackTrace: {e.StackTrace}");
             }
         }
         
         /// <summary>
-        /// Legacy Android method - tries to get controller from Activity
-        /// This is a fallback that likely won't work, but kept for debugging
+        /// Get the FlutterBridgeRegistry class with caching
         /// </summary>
-        private static void SendToFlutterAndroidLegacy(string target, string method, string data)
+        private static AndroidJavaClass GetFlutterBridgeRegistryClass()
         {
-            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            if (_registryClass != null)
             {
-                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                {
-                    currentActivity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
-                    {
-                        try
-                        {
-                            // This likely won't work - FlutterActivity doesn't have getUnityEngineController()
-                            using (AndroidJavaObject controller = currentActivity.Call<AndroidJavaObject>("getUnityEngineController"))
-                            {
-                                if (controller != null)
-                                {
-                                    controller.Call("onUnityMessage", target, method, data);
-                                }
-                                else
-                                {
-                                    Debug.LogWarning("NativeAPI: UnityEngineController not found on Activity (legacy method)");
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"NativeAPI Android Legacy: Error sending message: {e.Message}");
-                        }
-                    }));
-                }
+                return _registryClass;
             }
+            
+            if (_registryClassLoadAttempted)
+            {
+                return null;
+            }
+            
+            _registryClassLoadAttempted = true;
+            string className = "com.xraph.gameframework.unity.FlutterBridgeRegistry";
+            
+            // Try direct class loading
+            try
+            {
+                Debug.Log("NativeAPI Android: Trying direct class loading...");
+                _registryClass = new AndroidJavaClass(className);
+                
+                // Verify it works
+                _registryClass.CallStatic<bool>("isReady");
+                Debug.Log("NativeAPI Android: Direct class loading succeeded!");
+                return _registryClass;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"NativeAPI Android: Direct loading failed: {e.Message}");
+                _registryClass = null;
+            }
+            
+            Debug.LogError("NativeAPI Android: Failed to load FlutterBridgeRegistry class!");
+            return null;
         }
 #endif
 

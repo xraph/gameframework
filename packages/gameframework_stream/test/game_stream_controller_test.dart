@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gameframework_stream/gameframework_stream.dart';
-import 'package:gameframework_stream/src/game_stream_controller.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

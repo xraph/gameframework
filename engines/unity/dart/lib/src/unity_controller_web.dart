@@ -3,8 +3,8 @@ import 'dart:async';
 import 'dart:html' as html;
 // ignore: deprecated_member_use, avoid_web_libraries_in_flutter
 import 'dart:js' as js;
-// ignore: deprecated_member_use, avoid_web_libraries_in_flutter
-import 'dart:ui' as ui;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:gameframework/gameframework.dart';
 
@@ -47,6 +47,7 @@ class UnityControllerWeb implements GameEngineController {
   bool _disposed = false;
 
   html.DivElement? _container;
+  html.CanvasElement? _canvas;
   js.JsObject? _unityInstance;
 
   /// Message queue for messages sent before Unity is ready.
@@ -68,46 +69,52 @@ class UnityControllerWeb implements GameEngineController {
   }
 
   void _setupContainer() {
+    _canvas = html.CanvasElement()
+      ..id = '${_containerId}-canvas'
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.display = 'block';
+
     _container = html.DivElement()
       ..id = _containerId
       ..style.width = '100%'
       ..style.height = '100%'
-      ..style.position = 'relative';
+      ..style.position = 'relative'
+      ..append(_canvas!);
   }
 
   /// Register an HtmlElementView factory so Flutter Web can render the Unity container.
   void _registerPlatformViewFactory(int viewId) {
-    // ignore: undefined_prefixed_name, avoid_dynamic_calls
-    // ignore: deprecated_member_use
-    ui.platformViewRegistry.registerViewFactory(
+    ui_web.platformViewRegistry.registerViewFactory(
       'com.xraph.gameframework/unity_$viewId',
       (int id) => _container!,
     );
   }
 
   void _setupMessageHandler() {
-    // Register global message handler that Unity can call
-    js.context['FlutterUnityReceiveMessage'] = (
-      String target,
-      String method,
-      String data,
-    ) {
-      _handleUnityMessage(target, method, data);
-    };
+    // Register global message handler that Unity can call.
+    // Must use js.allowInterop so Dart closures are correctly wrapped for JS→Dart
+    // parameter passing across the Wasm/JS boundary.
+    js.context['FlutterUnityReceiveMessage'] = js.allowInterop(
+      (String target, String method, String data) {
+        _handleUnityMessage(target, method, data);
+      },
+    );
 
     // Register scene load handler
-    js.context['FlutterUnitySceneLoaded'] = (
-      String name,
-      int buildIndex,
-    ) {
-      _handleSceneLoaded(name, buildIndex);
-    };
+    js.context['FlutterUnitySceneLoaded'] = js.allowInterop(
+      (String name, int buildIndex) {
+        _handleSceneLoaded(name, buildIndex);
+      },
+    );
   }
 
   void _handleUnityMessage(String target, String method, String data) {
     if (_disposed) return;
 
     _messageController.add(GameEngineMessage(
+      target: target,
+      method: method,
       data: data,
       timestamp: DateTime.now(),
       metadata: {
@@ -219,9 +226,12 @@ class UnityControllerWeb implements GameEngineController {
         _emitProgress(0.3 + (progress * 0.6));
       });
 
-      // Call createUnityInstance with progress callback
+      // Call createUnityInstance with the canvas element (not the div wrapper).
+      // Unity's framework.js patches canvas.getContext (Safari WebGL2 fix) which
+      // requires an actual <canvas> element — passing a <div> causes
+      // "canvas.getContextSafariWebGL2Fixed is not a function".
       final instancePromise = createUnityInstance.apply([
-        _container,
+        _canvas,
         config,
         progressCallback,
       ]);
@@ -286,6 +296,27 @@ class UnityControllerWeb implements GameEngineController {
   }
 
   /// Flush all queued messages to Unity.
+  /// Encode a message as the JSON envelope FlutterBridge.ReceiveMessage expects.
+  /// This matches the native iOS/Android format so MessageRouter can dispatch
+  /// via [FlutterMethod] attributes regardless of C# method name casing.
+  String _makeEnvelope(String target, String method, String data) {
+    // Escape the data string for embedding in JSON.
+    final escapedData = data
+        .replaceAll('\\', '\\\\')
+        .replaceAll('"', '\\"')
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r')
+        .replaceAll('\t', '\\t');
+    return '{"target":"$target","method":"$method","data":"$escapedData"}';
+  }
+
+  /// Call unityInstance.SendMessage directly without envelope wrapping.
+  /// Used internally for messages that are already formatted as envelopes
+  /// (e.g. pause/resume routing to FlutterBridge.ReceiveMessage directly).
+  void _callUnityDirect(String gameObject, String method, String data) {
+    _unityInstance?.callMethod('SendMessage', [gameObject, method, data]);
+  }
+
   void _flushMessageQueue() {
     if (_messageQueue.isEmpty) return;
 
@@ -297,10 +328,12 @@ class UnityControllerWeb implements GameEngineController {
 
     for (final msg in messages) {
       try {
+        // Route through FlutterBridge.ReceiveMessage so MessageRouter handles
+        // [FlutterMethod] dispatch — same path as native iOS/Android.
         _unityInstance?.callMethod('SendMessage', [
-          msg.target,
-          msg.method,
-          msg.data,
+          'FlutterBridge',
+          'ReceiveMessage',
+          _makeEnvelope(msg.target, msg.method, msg.data),
         ]);
       } catch (e) {
         debugPrint('Failed to flush queued message ${msg.target}.${msg.method}: $e');
@@ -326,7 +359,15 @@ class UnityControllerWeb implements GameEngineController {
     }
 
     try {
-      _unityInstance!.callMethod('SendMessage', [target, method, data]);
+      // Route through FlutterBridge.ReceiveMessage so MessageRouter handles
+      // [FlutterMethod] dispatch — same path as native iOS/Android.
+      // Direct unityInstance.SendMessage(target, method, data) bypasses the
+      // router and requires exact C# method names (case-sensitive on WebGL).
+      _unityInstance!.callMethod('SendMessage', [
+        'FlutterBridge',
+        'ReceiveMessage',
+        _makeEnvelope(target, method, data),
+      ]);
     } catch (e) {
       throw EngineCommunicationException(
         'Failed to send message to Unity WebGL: $e',
@@ -354,8 +395,9 @@ class UnityControllerWeb implements GameEngineController {
 
     try {
       // Unity WebGL doesn't have direct pause API, so we send a message
-      // to the FlutterBridge in Unity which calls NativeAPI.Pause(true)
-      await sendMessage('FlutterBridge', 'ReceiveMessage',
+      // to the FlutterBridge in Unity which calls NativeAPI.Pause(true).
+      // Use _callUnityDirect — the JSON is already a proper envelope.
+      _callUnityDirect('FlutterBridge', 'ReceiveMessage',
           '{"target":"NativeAPI","method":"Pause","data":"true"}');
       _isPaused = true;
 
@@ -378,7 +420,7 @@ class UnityControllerWeb implements GameEngineController {
     if (!_isReady) return;
 
     try {
-      await sendMessage('FlutterBridge', 'ReceiveMessage',
+      _callUnityDirect('FlutterBridge', 'ReceiveMessage',
           '{"target":"NativeAPI","method":"Pause","data":"false"}');
       _isPaused = false;
 
