@@ -70,7 +70,7 @@ class UnityControllerWeb implements GameEngineController {
 
   void _setupContainer() {
     _canvas = html.CanvasElement()
-      ..id = '${_containerId}-canvas'
+      ..id = '$_containerId-canvas'
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.display = 'block';
