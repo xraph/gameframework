@@ -42,8 +42,12 @@ to sync your Unity export to your plugin's ios/ directory.
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    # Search for frameworks in the local directory (symlink), Pods build directory, and sibling plugins
-    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}" "${PODS_CONFIGURATION_BUILD_DIR}" "${PODS_ROOT}/../.symlinks/plugins/*/ios"',
+    # Find UnityFramework wherever the consumer plugin vendors it. NOTE: Xcode
+    # does NOT expand a single `*` in search paths, so "plugins/*/ios" never
+    # resolves for hosted (pub.dev) installs — it only worked when `game sync`
+    # planted a symlink in this pod's own dir. Use Xcode's recursive `**`
+    # syntax, which searches all subdirectories under the plugins symlink dir.
+    'FRAMEWORK_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}" "${PODS_CONFIGURATION_BUILD_DIR}" "${PODS_ROOT}/../.symlinks/plugins/**"',
     # Allow weak linking to UnityFramework
     'OTHER_LDFLAGS' => '$(inherited) -ObjC'
   }
