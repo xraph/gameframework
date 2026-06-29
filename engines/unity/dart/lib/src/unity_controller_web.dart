@@ -205,10 +205,8 @@ class UnityControllerWeb implements GameEngineController {
         'streamingAssetsUrl': '$buildUrl/StreamingAssets',
         'companyName':
             _getConfigValue<String>('companyName') ?? 'DefaultCompany',
-        'productName':
-            _getConfigValue<String>('productName') ?? 'Unity Game',
-        'productVersion':
-            _getConfigValue<String>('productVersion') ?? '1.0',
+        'productName': _getConfigValue<String>('productName') ?? 'Unity Game',
+        'productVersion': _getConfigValue<String>('productVersion') ?? '1.0',
       });
 
       _emitProgress(0.3);
@@ -336,7 +334,8 @@ class UnityControllerWeb implements GameEngineController {
           _makeEnvelope(msg.target, msg.method, msg.data),
         ]);
       } catch (e) {
-        debugPrint('Failed to flush queued message ${msg.target}.${msg.method}: $e');
+        debugPrint(
+            'Failed to flush queued message ${msg.target}.${msg.method}: $e');
       }
     }
   }
@@ -352,8 +351,7 @@ class UnityControllerWeb implements GameEngineController {
             'Unity WebGL message queue full ($_maxQueueSize). Dropped oldest message.');
       }
       _messageQueue.add(_QueuedMessage(target, method, data));
-      debugPrint(
-          'Unity WebGL not ready. Message queued: $target.$method '
+      debugPrint('Unity WebGL not ready. Message queued: $target.$method '
           '(${_messageQueue.length}/$_maxQueueSize)');
       return;
     }
