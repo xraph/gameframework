@@ -2,6 +2,19 @@
 
 All notable changes to the gameframework_unity package will be documented in this file.
 
+## [0.0.4] - 2026-06-26
+
+### Fixed
+- **iOS:** resolve the `UnityFramework` Swift module on hosted (pub.dev) installs.
+  The podspec's `FRAMEWORK_SEARCH_PATHS` used a single-`*` glob
+  (`.symlinks/plugins/*/ios`) that Xcode does not expand, so consumers of the
+  published package failed to build for iOS with
+  `Unable to resolve module dependency: 'UnityFramework'`. It only worked when
+  `game sync` planted a symlink in this pod's own directory — which never
+  happens for hosted installs. Switched to Xcode's recursive `**` search syntax,
+  which finds the consumer plugin's vendored `UnityFramework.framework` with no
+  `game sync` symlink and no Podfile workaround.
+
 ## [0.0.3] - 2026-02-06
 
 ### Changed
