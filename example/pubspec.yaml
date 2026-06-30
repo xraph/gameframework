@@ -23,7 +23,7 @@ dependencies:
   gameframework: 0.0.3
 
   # Unity plugin
-  gameframework_unity: 0.0.3
+  gameframework_unity: 0.0.4
   
   # Unreal plugin
   gameframework_unreal: 0.0.3
