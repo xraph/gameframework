@@ -77,10 +77,10 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  gameframework: ^0.0.2
-  gameframework_unity: ^0.0.2  # If using Unity
-  gameframework_stream: ^0.0.2  # If using asset streaming
-  # gameframework_unreal: ^0.0.2  # If using Unreal (WIP)
+  gameframework: ^0.0.3
+  gameframework_unity: ^0.0.4  # If using Unity
+  gameframework_stream: ^0.0.3  # If using asset streaming
+  # gameframework_unreal: ^0.0.3  # If using Unreal (WIP)
 ```
 
 ### Basic Usage
@@ -236,7 +236,7 @@ Game Engine (Unity/Unreal)
 
 ## 📊 Project Status & Roadmap
 
-**Current Version:** 0.0.2
+**Current Version:** 0.0.3
 
 ### ✅ Production Ready
 - **Unity:** Android, iOS
@@ -324,10 +324,10 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 All packages use semantic versioning (semver). Current versions:
 
-- gameframework: 0.0.2
-- gameframework_stream: 0.0.2
-- gameframework_unity: 0.0.2
-- gameframework_unreal: 0.0.2
+- gameframework: 0.0.3
+- gameframework_stream: 0.0.3
+- gameframework_unity: 0.0.4
+- gameframework_unreal: 0.0.3
 
 ## License
 

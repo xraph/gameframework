@@ -33,10 +33,8 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  gameframework:
-    path: ../../../  # Path to core framework
-  gameframework_unity:
-    path: ../../../engines/unity/dart/
+  gameframework: ^0.0.3
+  gameframework_unity: ^0.0.4
 ```
 
 ## Setup

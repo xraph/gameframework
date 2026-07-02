@@ -29,9 +29,9 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 
 ```yaml
 dependencies:
-  gameframework: ^0.0.2
-  gameframework_unity: ^0.0.2
-  gameframework_stream: ^0.0.2  # Optional: for asset streaming
+  gameframework: ^0.0.3
+  gameframework_unity: ^0.0.4
+  gameframework_stream: ^0.0.3  # Optional: for asset streaming
 ```
 
 Or install from the command line:
@@ -246,7 +246,7 @@ The example demonstrates:
 
 ## 📊 Project Status & Roadmap
 
-**Current Version:** 0.0.2
+**Current Version:** 0.0.3
 
 ### ✅ Production Ready
 - **Unity:** Android, iOS

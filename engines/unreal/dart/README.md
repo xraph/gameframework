@@ -51,8 +51,8 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  gameframework: ^0.0.2
-  gameframework_unreal: ^0.0.2
+  gameframework: ^0.0.3
+  gameframework_unreal: ^0.0.3
 ```
 
 Install:
