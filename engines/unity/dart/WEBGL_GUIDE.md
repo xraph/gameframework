@@ -232,10 +232,8 @@ cp -r Build/StreamingAssets path/to/flutter-project/web/unity/
 dependencies:
   flutter:
     sdk: flutter
-  gameframework:
-    path: ../gameframework
-  gameframework_unity:
-    path: ../gameframework/engines/unity/dart
+  gameframework: ^0.0.3
+  gameframework_unity: ^0.0.4
 ```
 
 ### 2. Configure Web Assets
