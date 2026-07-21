@@ -5,6 +5,10 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 [![pub package](https://img.shields.io/pub/v/gameframework.svg)](https://pub.dev/packages/gameframework)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <img src="assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
+</p>
+
 ---
 
 ## Overview
