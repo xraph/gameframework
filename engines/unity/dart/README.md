@@ -2,6 +2,10 @@
 
 Unity Engine integration plugin for Game Framework. This plugin allows you to embed Unity games in your Flutter applications with a unified API.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xraph/gameframework/main/assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
+</p>
+
 ## Features
 
 - ✅ Unity 2022.3.x support

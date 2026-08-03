@@ -8,6 +8,10 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-lightgrey.svg)](https://flutter.dev)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xraph/gameframework/main/assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
+</p>
+
 ---
 
 ## ✨ Features
