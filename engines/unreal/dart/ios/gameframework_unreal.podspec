@@ -53,5 +53,5 @@ to sync your Unreal export to your plugin's ios/ directory.
   s.swift_version = '5.0'
 
   # System frameworks required by Unreal Engine
-  s.frameworks = 'UIKit', 'Foundation', 'Metal', 'MetalKit', 'CoreGraphics', 'AVFoundation', 'AudioToolbox'
+  s.frameworks = 'UIKit', 'Foundation', 'Metal', 'MetalKit', 'CoreGraphics', 'AVFoundation', 'AudioToolbox', 'QuartzCore'
 end

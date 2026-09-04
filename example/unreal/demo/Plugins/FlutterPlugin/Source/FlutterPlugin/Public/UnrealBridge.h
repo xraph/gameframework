@@ -100,7 +100,47 @@ UNREALBRIDGE_API int32_t UnrealBridge_GetQualitySettings(int32_t* outValues,
 #define UNREALBRIDGE_QUALITY_VALUE_COUNT 7
 
 // ============================================================
-// MARK: - Lifecycle
+// MARK: - Engine lifecycle
+// ============================================================
+//
+// In an embedded build Unreal does not own main() or the run loop, so the host
+// has to drive the engine. Unreal exposes this as FEmbeddedCommunication, which
+// building as a framework switches on via BUILD_EMBEDDED_APP.
+//
+// The sequence is: call UnrealBridge_Init once, early, then UnrealBridge_Tick
+// every frame from the thread that owns the engine. Between ticks the engine
+// sleeps unless something asks it to stay awake.
+
+/// Bring up the embedded engine plumbing. Safe to call more than once; only
+/// the first call does anything.
+UNREALBRIDGE_API void UnrealBridge_Init(void);
+
+/// Advance the engine by [deltaSeconds]. Call from the thread that owns the
+/// engine, once per frame. Returns non-zero if the engine did work and wants to
+/// be ticked again promptly.
+///
+/// A host with a display link should pass the real frame delta rather than a
+/// fixed step, so the engine's own timing matches the display it renders to.
+UNREALBRIDGE_API int32_t UnrealBridge_Tick(float deltaSeconds);
+
+/// Nudge the game thread when something has been queued for it.
+UNREALBRIDGE_API void UnrealBridge_WakeGameThread(void);
+
+/// Hold the engine awake, or let it sleep again. Calls pair by `requester`, and
+/// repeated calls with the same requester must agree on `needsRendering`.
+/// Without at least one requester the engine idles between ticks, which is the
+/// point: an embedded engine on a mostly static screen should not burn a core.
+UNREALBRIDGE_API void UnrealBridge_KeepAwake(const char* requester,
+                                             int32_t needsRendering);
+UNREALBRIDGE_API void UnrealBridge_AllowSleep(const char* requester);
+
+/// Whether the engine currently wants ticking, and whether it wants rendering.
+/// A host can skip work when both are false.
+UNREALBRIDGE_API int32_t UnrealBridge_IsAwakeForTicking(void);
+UNREALBRIDGE_API int32_t UnrealBridge_IsAwakeForRendering(void);
+
+// ============================================================
+// MARK: - Host lifecycle
 // ============================================================
 
 UNREALBRIDGE_API void UnrealBridge_Pause(int32_t paused);

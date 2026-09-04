@@ -6,6 +6,7 @@
 
 #include "UnrealBridge.h"
 #include "Async/Async.h"
+#include "Misc/EmbeddedCommunication.h"
 
 #include <atomic>
 
@@ -67,26 +68,25 @@ static FString CStringToFString(const char* String)
 ///
 /// Everything below reaches into UObjects, which is only legal on the game
 /// thread. Calls arriving from the app's main thread get queued.
+/// Priority for work queued through FEmbeddedCommunication. Zero is the normal
+/// band; higher numbers run first.
+static constexpr int GBridgeWorkPriority = 0;
+
 static void RunOnGameThread(TFunction<void()> Work)
 {
-	// Nothing to deliver to, and more importantly nothing safe to ask. Until an
-	// AFlutterBridge has registered, the engine may not be initialised at all:
-	// the host can load this library and call in before PreInit has run, and
-	// IsInGameThread and the task graph both read globals that do not exist
-	// yet. Dropping the call here is what the callee would have done anyway.
-	if (GFlutterBridgeInstance.load(std::memory_order_acquire) == nullptr)
-	{
-		return;
-	}
-
 	if (IsInGameThread())
 	{
 		Work();
+		return;
 	}
-	else
-	{
-		AsyncTask(ENamedThreads::GameThread, MoveTemp(Work));
-	}
+
+	// FEmbeddedCommunication::RunOnGameThread is explicitly safe before Init,
+	// so a host that calls in during startup gets its work queued rather than
+	// dropped. That matters here: the task graph is not safe that early, and an
+	// earlier version of this reached straight for AsyncTask and crashed when
+	// the engine had not been initialised.
+	FEmbeddedCommunication::RunOnGameThread(GBridgeWorkPriority, MoveTemp(Work));
+	FEmbeddedCommunication::WakeGameThread();
 }
 
 /// Refresh the quality cache. Game thread only.
@@ -388,6 +388,54 @@ int32_t UnrealBridge_GetQualitySettings(int32_t* OutValues, int32_t Capacity)
 	}
 
 	return UNREALBRIDGE_QUALITY_VALUE_COUNT;
+}
+
+void UnrealBridge_Init(void)
+{
+	static std::atomic<bool> bInitialised{false};
+	bool bExpected = false;
+	if (!bInitialised.compare_exchange_strong(bExpected, true))
+	{
+		return;
+	}
+
+	FEmbeddedCommunication::Init();
+	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Apple] Embedded communication initialised"));
+}
+
+int32_t UnrealBridge_Tick(float DeltaSeconds)
+{
+	// TickGameThread must run on the thread that owns the engine. In an
+	// embedded build that is whichever thread the host drives it from, so this
+	// deliberately does not marshal: doing so would tick from somewhere the
+	// engine does not expect.
+	return FEmbeddedCommunication::TickGameThread(DeltaSeconds) ? 1 : 0;
+}
+
+void UnrealBridge_WakeGameThread(void)
+{
+	FEmbeddedCommunication::WakeGameThread();
+}
+
+void UnrealBridge_KeepAwake(const char* Requester, int32_t bNeedsRendering)
+{
+	FEmbeddedCommunication::KeepAwake(FName(CStringToFString(Requester)),
+		bNeedsRendering != 0);
+}
+
+void UnrealBridge_AllowSleep(const char* Requester)
+{
+	FEmbeddedCommunication::AllowSleep(FName(CStringToFString(Requester)));
+}
+
+int32_t UnrealBridge_IsAwakeForTicking(void)
+{
+	return FEmbeddedCommunication::IsAwakeForTicking() ? 1 : 0;
+}
+
+int32_t UnrealBridge_IsAwakeForRendering(void)
+{
+	return FEmbeddedCommunication::IsAwakeForRendering() ? 1 : 0;
 }
 
 void UnrealBridge_Pause(int32_t Paused)

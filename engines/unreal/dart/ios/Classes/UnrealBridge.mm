@@ -44,6 +44,10 @@ typedef void (*LoadLevelFn)(const char*);
 typedef void (*ApplyQualitySettingsFn)(int32_t, int32_t, int32_t, int32_t,
                                        int32_t, int32_t, int32_t, int32_t);
 typedef int32_t (*GetQualitySettingsFn)(int32_t*, int32_t);
+typedef void (*InitFn)(void);
+typedef int32_t (*TickFn)(float);
+typedef void (*KeepAwakeFn)(const char*, int32_t);
+typedef void (*AllowSleepFn)(const char*);
 typedef void (*PauseFn)(int32_t);
 typedef void (*StopFn)(void);
 typedef int32_t (*IsReadyFn)(void);
@@ -172,6 +176,66 @@ static void HandleUnrealBinary(const char* target, const char* method,
     });
 }
 
+
+// ============================================================
+// MARK: - Driving the engine
+// ============================================================
+//
+// An embedded Unreal does not own the run loop, so nothing advances the engine
+// unless the host does it. The bridge drives FEmbeddedCommunication::TickGameThread
+// from a display link, which keeps the engine's timing tied to the display it
+// renders to rather than to an arbitrary timer.
+//
+// Ticking happens on the main thread. That is where the host lives, and where
+// an embedded engine expects to be driven from.
+
+static void UnrealTick(double deltaSeconds) {
+    TickFn tick = UNREAL_FN(TickFn, "UnrealBridge_Tick");
+    if (tick) {
+        tick((float)deltaSeconds);
+    }
+}
+
+/// CADisplayLink already fires on the main run loop, so no hop is needed.
+static CADisplayLink* GDisplayLink = nil;
+static CFTimeInterval GLastTickTime = 0;
+
+@interface UnrealTicker : NSObject
++ (instancetype)shared;
+- (void)onFrame:(CADisplayLink*)link;
+@end
+
+@implementation UnrealTicker
++ (instancetype)shared {
+    static UnrealTicker* instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ instance = [[UnrealTicker alloc] init]; });
+    return instance;
+}
+- (void)onFrame:(CADisplayLink*)link {
+    const CFTimeInterval current = link.timestamp;
+    const CFTimeInterval delta =
+        (GLastTickTime > 0) ? (current - GLastTickTime) : link.duration;
+    GLastTickTime = current;
+    UnrealTick(delta);
+}
+@end
+
+static void StartTicking(void) {
+    if (GDisplayLink) return;
+    GDisplayLink = [CADisplayLink displayLinkWithTarget:[UnrealTicker shared]
+                                               selector:@selector(onFrame:)];
+    GLastTickTime = 0;
+    [GDisplayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    NSLog(@"[UnrealBridge] Ticking the engine from the display link");
+}
+
+static void StopTicking(void) {
+    if (!GDisplayLink) return;
+    [GDisplayLink invalidate];
+    GDisplayLink = nil;
+}
+
 // ============================================================
 // MARK: - UnrealBridge
 // ============================================================
@@ -228,7 +292,12 @@ static void HandleUnrealBinary(const char* target, const char* method,
               @"Place one in your level if messages never arrive.");
     }
 
-    NSLog(@"[UnrealBridge] Bridge created, callbacks registered");
+    InitFn initEngine = UNREAL_FN(InitFn, "UnrealBridge_Init");
+    if (initEngine) initEngine();
+
+    StartTicking();
+
+    NSLog(@"[UnrealBridge] Bridge created, callbacks registered, engine ticking");
     return YES;
 }
 
@@ -248,6 +317,7 @@ static void HandleUnrealBinary(const char* target, const char* method,
 }
 
 - (void)quit {
+    StopTicking();
     StopFn stop = UNREAL_FN(StopFn, "UnrealBridge_Stop");
     if (stop) stop();
     GUnrealEngineController = nil;

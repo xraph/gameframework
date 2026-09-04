@@ -42,7 +42,7 @@ echo
 echo "=== Framework absent ==="
 compile_mm "$HERE/UnrealBridgeAbsentTests.mm" "$BUILD/absent.o"
 xcrun --sdk macosx clang++ "$BUILD/UnrealBridge.o" "$BUILD/absent.o" \
-  -framework Foundation -framework Cocoa -o "$BUILD/absent"
+  -framework Foundation -framework Cocoa -framework CoreVideo -framework QuartzCore -o "$BUILD/absent"
 "$BUILD/absent"
 
 echo
@@ -50,5 +50,5 @@ echo "=== Framework present (mock) ==="
 compile_mm "$HERE/UnrealBridgeTests.mm" "$BUILD/live.o"
 xcrun --sdk macosx clang++ "$BUILD/UnrealBridge.o" "$BUILD/live.o" \
   "$BUILD/MockUnreal.dylib" \
-  -framework Foundation -framework Cocoa -rpath "$BUILD" -o "$BUILD/live"
+  -framework Foundation -framework Cocoa -framework CoreVideo -framework QuartzCore -rpath "$BUILD" -o "$BUILD/live"
 "$BUILD/live"

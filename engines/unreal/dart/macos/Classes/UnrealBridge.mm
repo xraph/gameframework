@@ -7,6 +7,8 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
+#import <CoreVideo/CoreVideo.h>
+#import <QuartzCore/QuartzCore.h>
 #import "UnrealBridge.h"
 
 // ============================================================
@@ -50,6 +52,10 @@ typedef void (*LoadLevelFn)(const char*);
 typedef void (*ApplyQualitySettingsFn)(int32_t, int32_t, int32_t, int32_t,
                                        int32_t, int32_t, int32_t, int32_t);
 typedef int32_t (*GetQualitySettingsFn)(int32_t*, int32_t);
+typedef void (*InitFn)(void);
+typedef int32_t (*TickFn)(float);
+typedef void (*KeepAwakeFn)(const char*, int32_t);
+typedef void (*AllowSleepFn)(const char*);
 typedef void (*PauseFn)(int32_t);
 typedef void (*StopFn)(void);
 typedef int32_t (*IsReadyFn)(void);
@@ -178,6 +184,117 @@ static void HandleUnrealBinary(const char* target, const char* method,
     });
 }
 
+
+// ============================================================
+// MARK: - Driving the engine
+// ============================================================
+//
+// An embedded Unreal does not own the run loop, so nothing advances the engine
+// unless the host does it. The bridge drives FEmbeddedCommunication::TickGameThread
+// from a display link, which keeps the engine's timing tied to the display it
+// renders to rather than to an arbitrary timer.
+//
+// Ticking happens on the main thread. That is where the host lives, and where
+// an embedded engine expects to be driven from.
+
+static void UnrealTick(double deltaSeconds) {
+    TickFn tick = UNREAL_FN(TickFn, "UnrealBridge_Tick");
+    if (tick) {
+        tick((float)deltaSeconds);
+    }
+}
+
+/// Two display link APIs, picked at runtime.
+///
+/// NSScreen.displayLink arrived in macOS 14 and CVDisplayLink is deprecated
+/// from 15, but this pod still supports 10.14, so both paths stay. Either way
+/// the tick runs on the main thread, which is where the host lives and where an
+/// embedded engine expects to be driven from.
+
+static CFTimeInterval GLastTickTime = 0;
+
+static void TickWithTimestamp(CFTimeInterval current, CFTimeInterval fallbackDelta) {
+    const CFTimeInterval delta =
+        (GLastTickTime > 0) ? (current - GLastTickTime) : fallbackDelta;
+    GLastTickTime = current;
+    UnrealTick(delta);
+}
+
+API_AVAILABLE(macos(14.0))
+@interface UnrealTicker : NSObject
++ (instancetype)shared;
+- (void)onFrame:(CADisplayLink*)link;
+@end
+
+@implementation UnrealTicker
++ (instancetype)shared {
+    static UnrealTicker* instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ instance = [[UnrealTicker alloc] init]; });
+    return instance;
+}
+- (void)onFrame:(CADisplayLink*)link {
+    TickWithTimestamp(link.timestamp, link.duration);
+}
+@end
+
+static CADisplayLink* GModernLink = nil;
+static CVDisplayLinkRef GLegacyLink = NULL;
+
+static CVReturn LegacyCallback(CVDisplayLinkRef, const CVTimeStamp*,
+                               const CVTimeStamp*, CVOptionFlags,
+                               CVOptionFlags*, void*) {
+    // CVDisplayLink fires on its own thread, so hop to main before ticking.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        TickWithTimestamp(CACurrentMediaTime(), 1.0 / 60.0);
+    });
+    return kCVReturnSuccess;
+}
+
+static void StartTicking(void) {
+    if (GModernLink || GLegacyLink) return;
+    GLastTickTime = 0;
+
+    if (@available(macOS 14.0, *)) {
+        NSScreen* screen = NSScreen.mainScreen;
+        if (screen) {
+            GModernLink = [screen displayLinkWithTarget:[UnrealTicker shared]
+                                               selector:@selector(onFrame:)];
+            [GModernLink addToRunLoop:NSRunLoop.mainRunLoop
+                              forMode:NSRunLoopCommonModes];
+            NSLog(@"[UnrealBridge] Ticking the engine from the screen display link");
+            return;
+        }
+    }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    if (CVDisplayLinkCreateWithActiveCGDisplays(&GLegacyLink) != kCVReturnSuccess) {
+        NSLog(@"[UnrealBridge] Could not create a display link; the engine will not tick");
+        GLegacyLink = NULL;
+        return;
+    }
+    CVDisplayLinkSetOutputCallback(GLegacyLink, &LegacyCallback, NULL);
+    CVDisplayLinkStart(GLegacyLink);
+#pragma clang diagnostic pop
+    NSLog(@"[UnrealBridge] Ticking the engine from a CVDisplayLink");
+}
+
+static void StopTicking(void) {
+    if (GModernLink) {
+        [GModernLink invalidate];
+        GModernLink = nil;
+    }
+    if (GLegacyLink) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        CVDisplayLinkStop(GLegacyLink);
+        CVDisplayLinkRelease(GLegacyLink);
+#pragma clang diagnostic pop
+        GLegacyLink = NULL;
+    }
+}
+
 // ============================================================
 // MARK: - UnrealBridge
 // ============================================================
@@ -219,7 +336,12 @@ static void HandleUnrealBinary(const char* target, const char* method,
               @"Place one in your level if messages never arrive.");
     }
 
-    NSLog(@"[UnrealBridge] Bridge created, callbacks registered");
+    InitFn initEngine = UNREAL_FN(InitFn, "UnrealBridge_Init");
+    if (initEngine) initEngine();
+
+    StartTicking();
+
+    NSLog(@"[UnrealBridge] Bridge created, callbacks registered, engine ticking");
     return YES;
 }
 
@@ -239,6 +361,7 @@ static void HandleUnrealBinary(const char* target, const char* method,
 }
 
 - (void)quit {
+    StopTicking();
     StopFn stop = UNREAL_FN(StopFn, "UnrealBridge_Stop");
     if (stop) stop();
     GUnrealEngineController = nil;

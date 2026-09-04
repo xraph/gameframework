@@ -60,7 +60,7 @@ echo "=== Framework absent ==="
 compile_mm "$HERE/UnrealBridgeAbsentTests.mm" "$BUILD/absent.o"
 xcrun --sdk "$SDK" clang++ -target "$TARGET" \
   "$BUILD/UnrealBridge.o" "$BUILD/absent.o" \
-  -framework Foundation -framework UIKit -o "$BUILD/absent"
+  -framework Foundation -framework UIKit -framework QuartzCore -o "$BUILD/absent"
 xcrun simctl spawn "$UDID" "$BUILD/absent" 2>&1 | grep -v '^20[0-9][0-9]-'
 
 echo
@@ -68,5 +68,5 @@ echo "=== Framework present (mock) ==="
 compile_mm "$HERE/UnrealBridgeTests.mm" "$BUILD/live.o"
 xcrun --sdk "$SDK" clang++ -target "$TARGET" \
   "$BUILD/UnrealBridge.o" "$BUILD/live.o" "$BUILD/MockUnreal.dylib" \
-  -framework Foundation -framework UIKit -rpath "$BUILD" -o "$BUILD/live"
+  -framework Foundation -framework UIKit -framework QuartzCore -rpath "$BUILD" -o "$BUILD/live"
 xcrun simctl spawn "$UDID" "$BUILD/live" 2>&1 | grep -v '^20[0-9][0-9]-'

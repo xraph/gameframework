@@ -26,7 +26,7 @@ console commands, and level loading for Unreal Engine in Flutter apps.
   # Note: UnrealFramework.framework must be manually added to the macOS project
   # This podspec does not directly link the framework, as it's typically
   # bundled with the game project
-  s.frameworks = 'Cocoa', 'Foundation', 'Metal', 'MetalKit', 'CoreGraphics', 'QuartzCore'
+  s.frameworks = 'Cocoa', 'Foundation', 'Metal', 'MetalKit', 'CoreGraphics', 'QuartzCore', 'CoreVideo'
 
   # Enable Objective-C++ compilation for bridge files
   s.xcconfig = {
