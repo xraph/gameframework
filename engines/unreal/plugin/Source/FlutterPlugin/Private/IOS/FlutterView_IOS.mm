@@ -1,0 +1,263 @@
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+#include "FlutterBridge.h"
+
+#if PLATFORM_IOS
+
+#include "UnrealBridge.h"
+
+#import <UIKit/UIKit.h>
+
+#include "IOS/IOSAppDelegate.h"
+#include "IOS/IOSView.h"
+
+#if BUILD_EMBEDDED_APP
+
+// Defined in Private/FlutterBridge_Apple.cpp.
+extern bool FlutterBridge_IsEngineReadyForView();
+
+// ============================================================
+// MARK: - Embedded render view
+// ============================================================
+//
+// Unreal's embedded mode does not create its own view. LaunchIOS.cpp says so:
+// "For embedded apps, the UEEmbeddedView must have been created and set into
+// the AppDelegate as IOSView", and the branch that would have built one is
+// compiled out under BUILD_EMBEDDED_APP.
+//
+// So this does what the non-embedded path in FAppEntry does, minus the part
+// that parents the view. The host owns placement, because in a Flutter app the
+// view belongs to a platform view inside the widget tree.
+//
+// This file lives under Private/IOS so UnrealBuildTool leaves it out of every
+// other platform's build.
+
+/// The view handed to the host. The app delegate holds the only owning
+/// reference, so this is a plain observing pointer.
+///
+/// Not __weak: Unreal compiles Objective-C++ under manual reference counting,
+/// where weak references are a compile error rather than a nicety. It is
+/// cleared in UnrealBridge_DestroyView so it cannot outlive the view.
+static FIOSView* GEmbeddedView = nil;
+
+/// Apply the size Unreal should render at.
+///
+/// The engine works in pixels while the host talks in points, so the scale
+/// factor has to be applied here or the engine renders at the wrong resolution
+/// on every device with a retina display, which is all of them.
+static void ApplyViewSize(FIOSView* View, float Width, float Height, float Scale)
+{
+	if (View == nil)
+	{
+		return;
+	}
+
+	const CGFloat EffectiveScale = (Scale > 0.0f) ? (CGFloat)Scale : [UIScreen mainScreen].scale;
+
+	View.frame = CGRectMake(0, 0, (CGFloat)Width, (CGFloat)Height);
+	View.contentScaleFactor = EffectiveScale;
+	View.ViewSize = CGSizeMake((CGFloat)Width * EffectiveScale,
+		(CGFloat)Height * EffectiveScale);
+
+	[View CalculateContentScaleFactor:(int)(Width * EffectiveScale)
+						 ScreenHeight:(int)(Height * EffectiveScale)];
+
+	[View UpdateRenderWidth:(unsigned int)(Width * EffectiveScale)
+				  andHeight:(unsigned int)(Height * EffectiveScale)];
+}
+
+extern "C" {
+
+int32_t UnrealBridge_StartEngine(void)
+{
+	if (![NSThread isMainThread])
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[FlutterView_IOS] UnrealBridge_StartEngine must be called on the main thread"));
+		return 0;
+	}
+
+	static bool bStarted = false;
+	if (bStarted)
+	{
+		return 1;
+	}
+
+	// StartupEmbeddedUnreal is the engine's own "LaunchIOS replacement": it
+	// seeds the command line and starts the game thread. Without it nothing
+	// boots, the readiness signal never fires, and a host can tick an engine
+	// that was never running.
+	//
+	// It reaches for [IOSAppDelegate GetDelegate], which is Fatal if the app's
+	// delegate does not subclass IOSAppDelegate.
+	bStarted = true;
+	[FIOSView StartupEmbeddedUnreal];
+
+	UE_LOG(LogTemp, Log, TEXT("[FlutterView_IOS] Engine start requested"));
+	return 1;
+}
+
+void* UnrealBridge_CreateView(float Width, float Height, float Scale)
+{
+	if (![NSThread isMainThread])
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[FlutterView_IOS] UnrealBridge_CreateView must be called on the main thread"));
+		return nullptr;
+	}
+
+	IOSAppDelegate* AppDelegate = [IOSAppDelegate GetDelegate];
+	if (AppDelegate == nil)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[FlutterView_IOS] No IOSAppDelegate yet"));
+		return nullptr;
+	}
+
+	// The engine announces when the config it needs has been read, and the view
+	// depends on that. Building one earlier is a race, so refuse and let the
+	// host wait for UnrealBridge_SetEngineReadyCallback instead of getting a
+	// view that half works.
+	if (!FlutterBridge_IsEngineReadyForView())
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FlutterView_IOS] Engine has not signalled readiness yet; "
+				 "register UnrealBridge_SetEngineReadyCallback and create the view from there"));
+		return nullptr;
+	}
+
+	// Already made one. Resize it rather than stranding the engine on a view
+	// the host has thrown away.
+	if (AppDelegate.IOSView != nil)
+	{
+		ApplyViewSize(AppDelegate.IOSView, Width, Height, Scale);
+		GEmbeddedView = AppDelegate.IOSView;
+		return (void*)AppDelegate.IOSView;
+	}
+
+	const CGFloat EffectiveScale = (Scale > 0.0f) ? (CGFloat)Scale : [UIScreen mainScreen].scale;
+	FIOSView* View = [[FIOSView alloc] initWithFrame:CGRectMake(0, 0, Width, Height)];
+	if (View == nil)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[FlutterView_IOS] Failed to create FIOSView"));
+		return nullptr;
+	}
+
+	// Mirrors what FAppEntry does for a normal build.
+	View.clearsContextBeforeDrawing = NO;
+#if !PLATFORM_TVOS
+	View.multipleTouchEnabled = YES;
+#endif
+	View.contentScaleFactor = EffectiveScale;
+
+	// The delegate holds the strong reference, and the engine finds the view
+	// through it. Assign before creating the framebuffer, because the RHI
+	// reaches back through the delegate while initialising.
+	//
+	// Under manual reference counting the alloc above is +1 and the retain
+	// property adds another, so hand our own reference to the pool. That also
+	// keeps View valid through the failure path below, where the property gets
+	// cleared.
+	AppDelegate.IOSView = View;
+	[View autorelease];
+
+	ApplyViewSize(View, Width, Height, Scale);
+
+	if (![View CreateFramebuffer])
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[FlutterView_IOS] CreateFramebuffer failed, the engine has nothing to render into"));
+		AppDelegate.IOSView = nil;
+		return nullptr;
+	}
+
+	GEmbeddedView = View;
+	UE_LOG(LogTemp, Log,
+		TEXT("[FlutterView_IOS] Embedded render view created at %.0fx%.0f @%.1fx"),
+		Width, Height, (float)EffectiveScale);
+
+	// Returned unretained. The delegate owns it; the host must not release it.
+	return (void*)View;
+}
+
+void UnrealBridge_ResizeView(float Width, float Height, float Scale)
+{
+	if (![NSThread isMainThread])
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FlutterView_IOS] UnrealBridge_ResizeView called off the main thread, ignoring"));
+		return;
+	}
+
+	IOSAppDelegate* AppDelegate = [IOSAppDelegate GetDelegate];
+	FIOSView* View = (AppDelegate != nil) ? AppDelegate.IOSView : nil;
+	if (View == nil)
+	{
+		return;
+	}
+
+	ApplyViewSize(View, Width, Height, Scale);
+	[View forceLayoutSubviews];
+}
+
+void UnrealBridge_DestroyView(void)
+{
+	if (![NSThread isMainThread])
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FlutterView_IOS] UnrealBridge_DestroyView called off the main thread, ignoring"));
+		return;
+	}
+
+	IOSAppDelegate* AppDelegate = [IOSAppDelegate GetDelegate];
+	FIOSView* View = (AppDelegate != nil) ? AppDelegate.IOSView : nil;
+	if (View == nil)
+	{
+		return;
+	}
+
+	[View DestroyFramebuffer];
+	[View removeFromSuperview];
+	AppDelegate.IOSView = nil;
+	GEmbeddedView = nil;
+
+	UE_LOG(LogTemp, Log, TEXT("[FlutterView_IOS] Embedded render view destroyed"));
+}
+
+int32_t UnrealBridge_IsViewReady(void)
+{
+	FIOSView* View = GEmbeddedView;
+	// bIsInitialized is what FAppEntry itself waits on before letting the RHI
+	// start, so it is the honest answer to "can this render yet".
+	return (View != nil && View->bIsInitialized) ? 1 : 0;
+}
+
+} // extern "C"
+
+#else // !BUILD_EMBEDDED_APP
+
+// Not an embedded build, so the engine makes and owns its own view and the
+// embedded entry points it would need are compiled out of IOSView.h. Keep the
+// ABI present so a host can call it unconditionally and get an honest answer.
+
+extern "C" {
+
+int32_t UnrealBridge_StartEngine(void) { return 0; }
+
+void* UnrealBridge_CreateView(float, float, float)
+{
+	UE_LOG(LogTemp, Warning,
+		TEXT("[FlutterView_IOS] Not an embedded build. Set bBuildAsFramework=True "
+			 "under [/Script/IOSRuntimeSettings.IOSRuntimeSettings] in "
+			 "DefaultEngine.ini to build a framework with an embeddable view."));
+	return nullptr;
+}
+
+void UnrealBridge_ResizeView(float, float, float) {}
+void UnrealBridge_DestroyView(void) {}
+int32_t UnrealBridge_IsViewReady(void) { return 0; }
+
+} // extern "C"
+
+#endif // BUILD_EMBEDDED_APP
+
+#endif // PLATFORM_IOS

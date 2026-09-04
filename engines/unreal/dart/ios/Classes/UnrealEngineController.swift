@@ -70,7 +70,10 @@ public class UnrealEngineController: GameEngineController {
                 self.attachEngine()
                 NSLog("UnrealEngineController: Unreal view attached successfully")
             } else {
-                NSLog("UnrealEngineController: No Unreal view available (stub mode)")
+                // Normal on the first call. The engine announces when its
+                // config is loaded and the bridge builds the view then, which
+                // arrives at onUnrealViewReadyWithView.
+                NSLog("UnrealEngineController: Waiting for the engine's render view")
             }
             
             // Mark as ready
@@ -112,6 +115,27 @@ public class UnrealEngineController: GameEngineController {
         self.flushMessageQueue()
     }
     
+    /**
+     * Called by the bridge once the engine has built its render view.
+     *
+     * The view cannot exist until the engine has read its config, which it
+     * announces rather than doing on a fixed schedule. So createEngine finishes
+     * without a view and this attaches it whenever it arrives, which is usually
+     * a moment later but is not guaranteed to be.
+     *
+     * @objc makes this reachable from the Objective-C bridge.
+     */
+    @objc public func onUnrealViewReadyWithView(_ view: UIView) {
+        NSLog("UnrealEngineController: Unreal render view arrived")
+        self.unrealView = view
+        self.attachEngine()
+        self.sendEvent(name: "onMessage", data: [
+            "target": "Unreal",
+            "method": "onViewReady",
+            "data": "{\"success\":true}"
+        ])
+    }
+
     public override func attachEngine() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let unrealView = self.unrealView else {

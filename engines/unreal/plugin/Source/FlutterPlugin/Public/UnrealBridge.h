@@ -113,7 +113,26 @@ UNREALBRIDGE_API int32_t UnrealBridge_GetQualitySettings(int32_t* outValues,
 
 /// Bring up the embedded engine plumbing. Safe to call more than once; only
 /// the first call does anything.
+///
+/// This sets up messaging only. It does not start the engine.
 UNREALBRIDGE_API void UnrealBridge_Init(void);
+
+/// Start Unreal. Call once, from the main thread, after UnrealBridge_Init.
+///
+/// In an embedded build Unreal's own launch path never runs, because the host
+/// owns main() and the app delegate. This is the replacement: it starts the
+/// game thread, after which the engine boots and eventually announces that a
+/// render view can be made.
+///
+/// Two hard requirements, both enforced by the engine rather than by us:
+///
+///  - The application's delegate must be, or subclass, IOSAppDelegate. Unreal
+///    logs this Fatal: "Currently, a native app embedding Unreal must have the
+///    AppDelegate subclass from IOSAppDelegate."
+///  - It must be called on the main thread, before any view is requested.
+///
+/// Returns non-zero if the engine was started.
+UNREALBRIDGE_API int32_t UnrealBridge_StartEngine(void);
 
 /// Advance the engine by [deltaSeconds]. Call from the thread that owns the
 /// engine, once per frame. Returns non-zero if the engine did work and wants to
@@ -138,6 +157,71 @@ UNREALBRIDGE_API void UnrealBridge_AllowSleep(const char* requester);
 /// A host can skip work when both are false.
 UNREALBRIDGE_API int32_t UnrealBridge_IsAwakeForTicking(void);
 UNREALBRIDGE_API int32_t UnrealBridge_IsAwakeForRendering(void);
+
+// ============================================================
+// MARK: - Rendering surface
+// ============================================================
+//
+// iOS only. Unreal's embedded mode expects the host to create the view the
+// engine renders into and hand it over, which LaunchIOS.cpp states directly:
+// "For embedded apps, the UEEmbeddedView must have been created and set into
+// the AppDelegate as IOSView".
+//
+// So the framework builds an FIOSView, registers it with the app delegate, and
+// returns it here as an opaque pointer. The host casts it to UIView* and puts
+// it in its own hierarchy, which is how it ends up inside a Flutter widget.
+// Unreal renders into the view's CAMetalLayer directly, so nothing is copied
+// per frame.
+//
+// macOS has no equivalent. bShouldCompileAsDLL does not define
+// BUILD_EMBEDDED_APP there and no Mac runtime code honours it, so these return
+// NULL and do nothing.
+
+/// Fired once the engine has loaded its config and can build a render view.
+///
+/// Unreal announces this itself: FAppEntry broadcasts an "inisareready" command
+/// on the embedded-to-native channel, with a comment saying it means "the View
+/// can be made if it was waiting to create the view". Creating the view before
+/// that point is the timing bug this exists to avoid.
+///
+/// Fires on the game thread, so marshal before touching UIKit.
+typedef void (*UnrealEngineReadyCallback)(void);
+
+/// Register interest in that signal. If the engine has already announced it,
+/// the callback fires immediately rather than never, so a host that registers
+/// late is not left waiting. Pass NULL to unregister.
+UNREALBRIDGE_API void UnrealBridge_SetEngineReadyCallback(
+    UnrealEngineReadyCallback callback);
+
+/// Whether the engine has announced it. Polling alternative to the callback.
+UNREALBRIDGE_API int32_t UnrealBridge_IsReadyForView(void);
+
+/// Create the engine's render view, or return the existing one.
+///
+/// Returns NULL until UnrealBridge_IsReadyForView reports non-zero, because the
+/// engine has not read the config the view depends on yet.
+///
+/// Must be called from the main thread. Returns a UIView* as an opaque
+/// pointer, owned by the engine's app delegate: retain it if you need to, but
+/// do not release it. Returns NULL on macOS, or if the engine could not make
+/// the view.
+///
+/// Sizes are in points; [scale] is the display scale, normally
+/// UIScreen.main.scale.
+UNREALBRIDGE_API void* UnrealBridge_CreateView(float width, float height,
+                                               float scale);
+
+/// Tell the engine the view's size changed. Main thread.
+UNREALBRIDGE_API void UnrealBridge_ResizeView(float width, float height,
+                                              float scale);
+
+/// Tear the view down. Main thread. The pointer from UnrealBridge_CreateView is
+/// dead after this.
+UNREALBRIDGE_API void UnrealBridge_DestroyView(void);
+
+/// Whether the view exists and its framebuffer is ready for the RHI. Rendering
+/// only actually happens once this returns non-zero.
+UNREALBRIDGE_API int32_t UnrealBridge_IsViewReady(void);
 
 // ============================================================
 // MARK: - Host lifecycle

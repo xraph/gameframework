@@ -48,6 +48,13 @@ typedef void (*InitFn)(void);
 typedef int32_t (*TickFn)(float);
 typedef void (*KeepAwakeFn)(const char*, int32_t);
 typedef void (*AllowSleepFn)(const char*);
+typedef void (*EngineReadyCallback)(void);
+typedef void (*SetEngineReadyCallbackFn)(EngineReadyCallback);
+typedef int32_t (*IsReadyForViewFn)(void);
+typedef void* (*CreateViewFn)(float, float, float);
+typedef void (*ResizeViewFn)(float, float, float);
+typedef void (*DestroyViewFn)(void);
+typedef int32_t (*IsViewReadyFn)(void);
 typedef void (*PauseFn)(int32_t);
 typedef void (*StopFn)(void);
 typedef int32_t (*IsReadyFn)(void);
@@ -237,11 +244,35 @@ static void StopTicking(void) {
 }
 
 // ============================================================
+// MARK: - Waiting for the engine before building a view
+// ============================================================
+//
+// The engine reads its config before a render view can exist, and announces
+// when that is done. Asking earlier gets NULL, so the bridge registers for the
+// signal and builds the view when it lands rather than guessing at a delay.
+
+static void BuildViewNowThatEngineIsReady(void);
+
+/// Fires on the game thread, so hop to main before touching UIKit.
+static void OnEngineReady(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BuildViewNowThatEngineIsReady();
+    });
+}
+
+// ============================================================
 // MARK: - UnrealBridge
 // ============================================================
 
-@interface UnrealBridge : NSObject
+@interface UnrealBridge : NSObject {
+    CGSize _requestedViewSize;
+}
+/// The engine's render view once it exists. Owned by the engine's app
+/// delegate, so this is an observing reference.
+@property (nonatomic, weak) UIView* engineView;
 + (UnrealBridge*)shared;
+- (void)resizeViewTo:(CGSize)size;
+- (BOOL)isViewReady;
 - (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller;
 - (UIView*)getView;
 - (void)pause;
@@ -256,6 +287,15 @@ static void StopTicking(void) {
 @end
 
 @implementation UnrealBridge
+
+/// Size the engine renders at until the host resizes it. The screen bounds are
+/// the best guess available before the widget has been laid out.
+- (CGSize)requestedViewSize {
+    if (_requestedViewSize.width > 0 && _requestedViewSize.height > 0) {
+        return _requestedViewSize;
+    }
+    return UIScreen.mainScreen.bounds.size;
+}
 
 + (UnrealBridge*)shared {
     static UnrealBridge* instance = nil;
@@ -282,6 +322,12 @@ static void StopTicking(void) {
     SetBinaryCallbackFn setBinary = UNREAL_FN(SetBinaryCallbackFn, "UnrealBridge_SetBinaryCallback");
     if (setBinary) setBinary(&HandleUnrealBinary);
 
+    // Ask to be told when a view can be made. If the engine already announced
+    // it, this fires straight away rather than never.
+    SetEngineReadyCallbackFn setReady =
+        UNREAL_FN(SetEngineReadyCallbackFn, "UnrealBridge_SetEngineReadyCallback");
+    if (setReady) setReady(&OnEngineReady);
+
     IsReadyFn isReady = UNREAL_FN(IsReadyFn, "UnrealBridge_IsReady");
     const BOOL engineReady = isReady && (isReady() != 0);
     if (!engineReady) {
@@ -302,8 +348,39 @@ static void StopTicking(void) {
 }
 
 - (UIView*)getView {
-    // Unreal owns its own window on iOS; there is no subview to hand back.
+    // Unreal's embedded mode does not build its own view. The framework makes
+    // an FIOSView, registers it with the app delegate and hands it back here,
+    // so the engine renders straight into a view we can put inside a Flutter
+    // platform view. Nothing is copied per frame.
+    UIView* existing = [UnrealBridge shared].engineView;
+    if (existing) {
+        return existing;
+    }
+
+    // Not ready yet is the normal case on the first call: the engine announces
+    // when its config is loaded and the view gets built then. The controller is
+    // told through onUnrealViewReady, so returning nil here is not a failure.
+    IsReadyForViewFn readyForView =
+        UNREAL_FN(IsReadyForViewFn, "UnrealBridge_IsReadyForView");
+    if (readyForView && readyForView()) {
+        BuildViewNowThatEngineIsReady();
+        return [UnrealBridge shared].engineView;
+    }
+
+    NSLog(@"[UnrealBridge] Engine not ready for a view yet; waiting for its signal");
     return nil;
+}
+
+- (void)resizeViewTo:(CGSize)size {
+    ResizeViewFn resize = UNREAL_FN(ResizeViewFn, "UnrealBridge_ResizeView");
+    if (!resize) return;
+    _requestedViewSize = size;
+    resize((float)size.width, (float)size.height, (float)UIScreen.mainScreen.scale);
+}
+
+- (BOOL)isViewReady {
+    IsViewReadyFn ready = UNREAL_FN(IsViewReadyFn, "UnrealBridge_IsViewReady");
+    return ready && ready() != 0;
 }
 
 - (void)pause {
@@ -318,6 +395,10 @@ static void StopTicking(void) {
 
 - (void)quit {
     StopTicking();
+
+    DestroyViewFn destroyView = UNREAL_FN(DestroyViewFn, "UnrealBridge_DestroyView");
+    if (destroyView) destroyView();
+
     StopFn stop = UNREAL_FN(StopFn, "UnrealBridge_Stop");
     if (stop) stop();
     GUnrealEngineController = nil;
@@ -393,3 +474,49 @@ static void StopTicking(void) {
 }
 
 @end
+
+// ============================================================
+// MARK: - Deferred view creation
+// ============================================================
+
+static void BuildViewNowThatEngineIsReady(void) {
+    UnrealBridge* bridge = UnrealBridge.shared;
+    if (bridge.engineView) {
+        return;
+    }
+
+    CreateViewFn createView = UNREAL_FN(CreateViewFn, "UnrealBridge_CreateView");
+    if (!createView) {
+        NSLog(@"[UnrealBridge] Framework has no render view entry point");
+        return;
+    }
+
+    const CGSize size = bridge.requestedViewSize;
+    const CGFloat scale = UIScreen.mainScreen.scale;
+    void* handle = createView((float)size.width, (float)size.height, (float)scale);
+    if (!handle) {
+        NSLog(@"[UnrealBridge] The engine declined to make a render view");
+        return;
+    }
+
+    // Unretained and owned by the engine's app delegate, so do not take
+    // ownership of it here.
+    UIView* view = (__bridge UIView*)handle;
+    bridge.engineView = view;
+    NSLog(@"[UnrealBridge] Render view built at %@", NSStringFromCGSize(size));
+
+    id controller = GUnrealEngineController;
+    SEL selector = NSSelectorFromString(@"onUnrealViewReadyWithView:");
+    if ([controller respondsToSelector:selector]) {
+        NSMethodSignature* sig = [controller methodSignatureForSelector:selector];
+        NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:controller];
+        [inv setSelector:selector];
+        UIView* arg = view;
+        [inv setArgument:&arg atIndex:2];
+        [inv invoke];
+    } else {
+        NSLog(@"[UnrealBridge] Controller has no onUnrealViewReady handler; "
+              @"the view exists but nothing will show it");
+    }
+}

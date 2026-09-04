@@ -1,9 +1,13 @@
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 
 extern "C" {
 void MockUnreal_FireMessage(const char*, const char*, const char*);
+void MockUnreal_SignalEngineReady(void);
+void MockUnreal_SetView(void*);
+extern int gCreateViewCalls, gReadyForView;
 extern char gLastTarget[128], gLastMethod[128], gLastData[256];
 extern int32_t gLastQuality[8];
 extern int gConsoleCalls, gLevelCalls, gPauseState, gStopped;
@@ -89,6 +93,24 @@ int main(void) {
               "a message from Unreal reaches the controller on the main thread");
         check([controller.gotLevel isEqualToString:@"Arena"],
               "onLevelLoaded is rerouted to the controller's level callback");
+
+        // A real view, because the bridge stores it weakly and ARC will not
+        // register a weak reference to an arbitrary pointer.
+        UIView* fakeEngineView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
+        MockUnreal_SetView((__bridge void*)fakeEngineView);
+
+        // The engine has not announced readiness, so no view should exist yet.
+        check(gCreateViewCalls == 0,
+              "no render view is built before the engine signals readiness");
+        check(((id(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"getView")) == nil,
+              "getView returns nil while the engine is still starting");
+
+        MockUnreal_SignalEngineReady();
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
+        check(gCreateViewCalls == 1,
+              "the render view is built once the engine announces it can be");
+        check(((id(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"getView")) == fakeEngineView,
+              "getView hands back the engine's view once it exists");
 
         ((void(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"quit"));
         check(gStopped == 1, "quit stops the framework");

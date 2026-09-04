@@ -7,6 +7,7 @@
 #include "UnrealBridge.h"
 #include "Async/Async.h"
 #include "Misc/EmbeddedCommunication.h"
+#include "Misc/CoreDelegates.h"
 
 #include <atomic>
 
@@ -53,6 +54,66 @@ static const TCHAR* const GQualityKeys[UNREALBRIDGE_QUALITY_VALUE_COUNT] = {
 	TEXT("foliage"),
 	TEXT("viewDistance")
 };
+
+// ============================================================
+// MARK: - Waiting for the engine to be ready for a view
+// ============================================================
+//
+// FAppEntry broadcasts "inisareready" on the embedded-to-native channel once
+// the config is loaded, with a comment stating that this is when the view can
+// be made. Building the view earlier is a race, so the host is told when
+// instead of guessing.
+//
+// The signal and the host's registration can arrive in either order, so both
+// are recorded and whichever comes second does the work.
+
+static std::atomic<bool> GEngineReadyForView{false};
+static std::atomic<UnrealEngineReadyCallback> GEngineReadyCallback{nullptr};
+
+static void HandleEmbeddedToNative(const FEmbeddedCallParamsHelper& Params)
+{
+	if (Params.Command != TEXT("inisareready"))
+	{
+		return;
+	}
+
+	GEngineReadyForView.store(true, std::memory_order_release);
+	UE_LOG(LogTemp, Log,
+		TEXT("[FlutterBridge_Apple] Engine reports config is ready; a render view can be made"));
+
+	if (UnrealEngineReadyCallback Callback =
+			GEngineReadyCallback.load(std::memory_order_acquire))
+	{
+		Callback();
+	}
+}
+
+/// Subscribe once, as early as the module loads.
+///
+/// The plugin is a PreDefault-phase module, so this runs before FAppEntry gets
+/// far enough to broadcast. Registering late would mean missing it entirely,
+/// which is why this does not wait for the host to call in.
+void FlutterBridge_ListenForEngineReady()
+{
+	static bool bSubscribed = false;
+	if (bSubscribed)
+	{
+		return;
+	}
+	bSubscribed = true;
+
+	FEmbeddedDelegates::GetEmbeddedToNativeParamsDelegateForSubsystem(TEXT("native"))
+		.AddStatic(&HandleEmbeddedToNative);
+
+	UE_LOG(LogTemp, Log,
+		TEXT("[FlutterBridge_Apple] Listening for the engine's readiness signal"));
+}
+
+/// Whether a render view can be built yet. Used by the iOS view code.
+bool FlutterBridge_IsEngineReadyForView()
+{
+	return GEngineReadyForView.load(std::memory_order_acquire);
+}
 
 // ============================================================
 // MARK: - Helpers
@@ -388,6 +449,51 @@ int32_t UnrealBridge_GetQualitySettings(int32_t* OutValues, int32_t Capacity)
 	}
 
 	return UNREALBRIDGE_QUALITY_VALUE_COUNT;
+}
+
+#if PLATFORM_MAC
+
+// macOS has no embedded render path. bShouldCompileAsDLL does not define
+// BUILD_EMBEDDED_APP there and no Mac runtime code honours it, so there is no
+// engine-owned view to hand over. These exist so the ABI is the same shape on
+// both platforms and a host can call them unconditionally.
+
+void* UnrealBridge_CreateView(float, float, float)
+{
+	UE_LOG(LogTemp, Warning,
+		TEXT("[FlutterBridge_Apple] Unreal has no embedded render view on macOS"));
+	return nullptr;
+}
+
+int32_t UnrealBridge_StartEngine(void)
+{
+	UE_LOG(LogTemp, Warning,
+		TEXT("[FlutterBridge_Apple] Unreal has no embedded start path on macOS"));
+	return 0;
+}
+
+void UnrealBridge_ResizeView(float, float, float) {}
+void UnrealBridge_DestroyView(void) {}
+int32_t UnrealBridge_IsViewReady(void) { return 0; }
+
+#endif // PLATFORM_MAC
+
+void UnrealBridge_SetEngineReadyCallback(UnrealEngineReadyCallback Callback)
+{
+	GEngineReadyCallback.store(Callback, std::memory_order_release);
+
+	// Already announced, so tell the host now rather than leaving it waiting on
+	// a broadcast that has been and gone.
+	if (Callback != nullptr &&
+		GEngineReadyForView.load(std::memory_order_acquire))
+	{
+		Callback();
+	}
+}
+
+int32_t UnrealBridge_IsReadyForView(void)
+{
+	return GEngineReadyForView.load(std::memory_order_acquire) ? 1 : 0;
 }
 
 void UnrealBridge_Init(void)

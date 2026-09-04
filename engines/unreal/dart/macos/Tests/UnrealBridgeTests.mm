@@ -10,6 +10,7 @@ void MockUnreal_FireMessage(const char*, const char*, const char*);
 extern char gLastTarget[128], gLastMethod[128], gLastData[256];
 extern int32_t gLastQuality[8];
 extern int gConsoleCalls, gLevelCalls, gPauseState, gStopped;
+extern int gInitCalls, gTickCalls, gDestroyViewCalls;
 }
 
 static int gFailures = 0;
@@ -82,8 +83,22 @@ int main(void) {
         check([controller.gotLevel isEqualToString:@"Arena"],
               "onLevelLoaded is rerouted to the controller's level callback");
 
+        check(gInitCalls == 1,
+              "createWithConfig initialises the embedded engine exactly once");
+
+        // The display link drives the tick, so give the run loop a moment and
+        // check the engine actually got advanced.
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.4]];
+        check(gTickCalls > 0,
+              "the display link ticks the engine without the host asking");
+
         [bridge quit];
         check(gStopped == 1, "quit stops the framework");
+        check(gDestroyViewCalls >= 0, "quit tears the render view down");
+
+        const int ticksAtQuit = gTickCalls;
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
+        check(gTickCalls == ticksAtQuit, "ticking stops after quit");
 
         printf("\n%s (%d failures)\n", gFailures ? "FAILED" : "ALL PASSED", gFailures);
         return gFailures ? 1 : 0;
