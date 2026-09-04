@@ -11,7 +11,12 @@ public class GameFrameworkProject : ModuleRules
             "CoreUObject", 
             "Engine", 
             "InputCore",
-            "FlutterPlugin"
+            "FlutterPlugin",
+            // FlutterGameMode parses and builds JSON directly. A monolithic
+            // game target pulls these in through the plugin, so the omission
+            // only shows up when the modular editor target tries to link.
+            "Json",
+            "JsonUtilities"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] { });
