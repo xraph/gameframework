@@ -449,75 +449,14 @@ private class UnrealFramework {
 }
 
 // MARK: - Unreal Bridge Interface
-
-/**
- * Bridge to Objective-C++ code that interfaces with Unreal C++
- * This class will be implemented in UnrealBridge.mm (Objective-C++)
- */
-@objc public class UnrealBridge: NSObject {
-
-    @objc public static let shared = UnrealBridge()
-
-    private weak var controller: UnrealEngineController?
-
-    private override init() {
-        super.init()
-    }
-
-    // These methods will be implemented in UnrealBridge.mm (Objective-C++)
-    // They serve as the interface between Swift and Unreal C++
-
-    @objc public func create(config: [String: Any], controller: UnrealEngineController) -> Bool {
-        self.controller = controller
-        // Implementation in UnrealBridge.mm
-        return false // Placeholder
-    }
-
-    @objc public func getView() -> NSView? {
-        // Implementation in UnrealBridge.mm
-        return nil // Placeholder
-    }
-
-    @objc public func pause() {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func resume() {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func quit() {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func sendMessage(target: String, method: String, data: String) {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func executeConsoleCommand(_ command: String) {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func loadLevel(_ levelName: String) {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func applyQualitySettings(_ settings: [String: Any]) {
-        // Implementation in UnrealBridge.mm
-    }
-
-    @objc public func getQualitySettings() -> [String: Any] {
-        // Implementation in UnrealBridge.mm
-        return [:] // Placeholder
-    }
-
-    // Called from Unreal C++ to send messages to Flutter
-    @objc public func notifyMessage(target: String, method: String, data: String) {
-        controller?.onMessageFromUnreal(target: target, method: method, data: data)
-    }
-
-    // Called from Unreal C++ when level is loaded
-    @objc public func notifyLevelLoaded(levelName: String, buildIndex: Int) {
-        controller?.onLevelLoaded(levelName: levelName, buildIndex: buildIndex)
-    }
-}
+//
+// The UnrealBridge class is implemented in Objective-C++ (UnrealBridge.mm) and
+// declared in UnrealBridge.h, which the pod exposes to Swift. It used to be
+// duplicated here as a Swift placeholder whose methods all returned false or
+// nil; two classes registered under the same Objective-C name, with the winner
+// undefined, and the placeholder is the one that made createWithConfig always
+// fail. Do not add it back.
+//
+// Callbacks from Unreal arrive on onMessageFromUnreal(target:method:data:) and
+// onLevelLoaded(levelName:buildIndex:) above, dispatched by name from the
+// bridge.

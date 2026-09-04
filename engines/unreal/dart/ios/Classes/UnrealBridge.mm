@@ -1,62 +1,179 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-// Check if UnrealFramework is available
-#if __has_include("FlutterBridge.h")
-
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#include "FlutterBridge.h"
 
-// Forward declare the Swift controller class
-@class UnrealEngineController;
+// ============================================================
+// MARK: - UnrealFramework C ABI
+// ============================================================
+//
+// Resolved with dlsym rather than linked. The canonical declarations live in
+// the plugin's Public/UnrealBridge.h and are copied into the framework's
+// Headers/ at export time; keep the signatures below in step with them.
+//
+// Why dlsym and not a link-time dependency: UnrealFramework is produced by
+// "game export unreal -p ios", so it may legitimately be absent when this pod
+// is built. Linking against it would break those builds, and weak_import does
+// not help, because it only makes a symbol optional at load time while the
+// static linker still demands a definition. Looking the symbols up at runtime
+// keeps the pod self-contained and turns "framework missing" into a clear log
+// line instead of a build failure.
+//
+// This replaces an older __has_include split that decided at compile time and
+// silently produced a do-nothing bridge whenever a header search path was
+// slightly off.
 
-// Reference to FlutterBridge instance (Unreal Engine side)
-static AFlutterBridge* GFlutterBridgeInstance = nullptr;
+#import <dlfcn.h>
 
-// Reference to UnrealEngineController (Swift side)
+typedef void (*UnrealMessageCallback)(const char* target,
+                                      const char* method,
+                                      const char* data);
+
+typedef void (*UnrealBinaryCallback)(const char* target,
+                                     const char* method,
+                                     const void* data,
+                                     int32_t length,
+                                     int32_t checksum);
+
+typedef void (*SetMessageCallbackFn)(UnrealMessageCallback);
+typedef void (*SetBinaryCallbackFn)(UnrealBinaryCallback);
+typedef void (*SendToUnrealFn)(const char*, const char*, const char*);
+typedef void (*SendBinaryToUnrealFn)(const char*, const char*, const void*, int32_t, int32_t);
+typedef void (*ExecuteConsoleCommandFn)(const char*);
+typedef void (*LoadLevelFn)(const char*);
+typedef void (*ApplyQualitySettingsFn)(int32_t, int32_t, int32_t, int32_t,
+                                       int32_t, int32_t, int32_t, int32_t);
+typedef int32_t (*GetQualitySettingsFn)(int32_t*, int32_t);
+typedef void (*PauseFn)(int32_t);
+typedef void (*StopFn)(void);
+typedef int32_t (*IsReadyFn)(void);
+
+/// Look a bridge symbol up in whatever is already loaded into the process.
+/// Returns NULL when UnrealFramework is not present.
+static void* UnrealSymbol(const char* name) {
+    return dlsym(RTLD_DEFAULT, name);
+}
+
+#define UNREAL_FN(type, name) ((type)UnrealSymbol(name))
+
+/// Whether UnrealFramework is loaded into this process.
+static BOOL UnrealFrameworkLinked(void) {
+    static BOOL linked = NO;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        linked = UnrealSymbol("UnrealBridge_SendToUnreal") != NULL;
+    });
+    return linked;
+}
+
+/// Matches UNREALBRIDGE_QUALITY_VALUE_COUNT in the plugin header.
+static const int32_t kUnrealQualityValueCount = 7;
+
+/// Keys for the quality values, in the order the framework writes them.
+static NSArray<NSString*>* UnrealQualityKeys(void) {
+    return @[ @"antiAliasing", @"shadow", @"postProcess", @"texture",
+              @"effects", @"foliage", @"viewDistance" ];
+}
+
+// The Swift controller. Held strongly for as long as the bridge is live.
 static id GUnrealEngineController = nil;
 
 // ============================================================
-// MARK: - Helper Functions
+// MARK: - Callbacks from Unreal
 // ============================================================
+//
+// These fire on Unreal's GAME thread, and their pointers are only valid for the
+// duration of the call. Copy into Foundation objects immediately, then hop to
+// the main queue before touching the controller.
 
-NSString* FStringToNSString(const FString& String)
-{
-    return [NSString stringWithUTF8String:TCHAR_TO_UTF8(*String)];
+static void HandleUnrealMessage(const char* target, const char* method, const char* data) {
+    NSString* nsTarget = target ? @(target) : @"";
+    NSString* nsMethod = method ? @(method) : @"";
+    NSString* nsData = data ? @(data) : @"";
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id controller = GUnrealEngineController;
+        if (!controller) {
+            NSLog(@"[UnrealBridge] Dropping message, no controller: %@.%@", nsTarget, nsMethod);
+            return;
+        }
+
+        // Level loads arrive on the message channel rather than a channel of
+        // their own. Route them to the controller's level callback so the
+        // existing Swift signature keeps working.
+        if ([nsTarget isEqualToString:@"FlutterBridge"] &&
+            [nsMethod isEqualToString:@"onLevelLoaded"]) {
+            SEL levelSelector = NSSelectorFromString(@"onLevelLoadedWithLevelName:buildIndex:");
+            if ([controller respondsToSelector:levelSelector]) {
+                NSMethodSignature* sig = [controller methodSignatureForSelector:levelSelector];
+                NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+                [inv setTarget:controller];
+                [inv setSelector:levelSelector];
+                NSString* levelName = nsData;
+                NSInteger buildIndex = 0;
+                [inv setArgument:&levelName atIndex:2];
+                [inv setArgument:&buildIndex atIndex:3];
+                [inv invoke];
+                return;
+            }
+        }
+
+        SEL selector = NSSelectorFromString(@"onMessageFromUnrealWithTarget:method:data:");
+        if (![controller respondsToSelector:selector]) {
+            NSLog(@"[UnrealBridge] Controller does not respond to onMessageFromUnrealWithTarget:method:data:");
+            return;
+        }
+
+        NSMethodSignature* sig = [controller methodSignatureForSelector:selector];
+        NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:controller];
+        [inv setSelector:selector];
+        NSString* t = nsTarget; NSString* m = nsMethod; NSString* d = nsData;
+        [inv setArgument:&t atIndex:2];
+        [inv setArgument:&m atIndex:3];
+        [inv setArgument:&d atIndex:4];
+        [inv invoke];
+    });
 }
 
-FString NSStringToFString(NSString* String)
-{
-    if (!String) return FString();
-    return FString(UTF8_TO_TCHAR([String UTF8String]));
-}
+static void HandleUnrealBinary(const char* target, const char* method,
+                               const void* data, int32_t length, int32_t checksum) {
+    NSString* nsTarget = target ? @(target) : @"";
+    NSString* nsMethod = method ? @(method) : @"";
+    NSData* nsData = (data && length > 0)
+        ? [NSData dataWithBytes:data length:(NSUInteger)length]
+        : [NSData data];
 
-TMap<FString, FString> NSDictionaryToTMap(NSDictionary* Dictionary)
-{
-    TMap<FString, FString> Result;
-    if (!Dictionary) return Result;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id controller = GUnrealEngineController;
+        if (!controller) {
+            NSLog(@"[UnrealBridge] Dropping binary, no controller: %@.%@", nsTarget, nsMethod);
+            return;
+        }
 
-    for (NSString* key in Dictionary)
-    {
-        id value = [Dictionary objectForKey:key];
-        NSString* valueStr = [value isKindOfClass:[NSString class]] ? value : [NSString stringWithFormat:@"%@", value];
-        Result.Add(NSStringToFString(key), NSStringToFString(valueStr));
-    }
-    return Result;
-}
+        SEL selector = NSSelectorFromString(@"onBinaryFromUnrealWithTarget:method:data:checksum:");
+        if (![controller respondsToSelector:selector]) {
+            NSLog(@"[UnrealBridge] Controller has no binary handler, dropping %lu bytes from %@.%@",
+                  (unsigned long)nsData.length, nsTarget, nsMethod);
+            return;
+        }
 
-NSDictionary* TMapToNSDictionary(const TMap<FString, int32>& Map)
-{
-    NSMutableDictionary* Dictionary = [NSMutableDictionary dictionary];
-    for (const auto& Entry : Map)
-    {
-        [Dictionary setObject:@(Entry.Value) forKey:FStringToNSString(Entry.Key)];
-    }
-    return Dictionary;
+        NSMethodSignature* sig = [controller methodSignatureForSelector:selector];
+        NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:controller];
+        [inv setSelector:selector];
+        NSString* t = nsTarget; NSString* m = nsMethod; NSData* d = nsData;
+        NSInteger c = (NSInteger)checksum;
+        [inv setArgument:&t atIndex:2];
+        [inv setArgument:&m atIndex:3];
+        [inv setArgument:&d atIndex:4];
+        [inv setArgument:&c atIndex:5];
+        [inv invoke];
+    });
 }
 
 // ============================================================
-// MARK: - UnrealBridge Implementation (with Unreal Framework)
+// MARK: - UnrealBridge
 // ============================================================
 
 @interface UnrealBridge : NSObject
@@ -67,6 +184,7 @@ NSDictionary* TMapToNSDictionary(const TMap<FString, int32>& Map)
 - (void)resume;
 - (void)quit;
 - (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data;
+- (void)sendBinaryWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data;
 - (void)executeConsoleCommand:(NSString*)command;
 - (void)loadLevel:(NSString*)levelName;
 - (void)applyQualitySettings:(NSDictionary*)settings;
@@ -85,245 +203,123 @@ NSDictionary* TMapToNSDictionary(const TMap<FString, int32>& Map)
 }
 
 - (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller {
-    NSLog(@"[UnrealBridge] create called with config");
+    if (!UnrealFrameworkLinked()) {
+        NSLog(@"[UnrealBridge] UnrealFramework is not linked into this app. "
+              @"Run 'game export unreal -p ios' and 'game sync unreal -p ios', "
+              @"and check the framework is embedded in the Xcode target.");
+        return NO;
+    }
 
-    // Store controller reference
     GUnrealEngineController = controller;
 
-    // Unreal Engine initialization happens automatically when framework loads
-    NSLog(@"[UnrealBridge] Unreal Engine initialized, controller registered");
+    SetMessageCallbackFn setMessage = UNREAL_FN(SetMessageCallbackFn, "UnrealBridge_SetMessageCallback");
+    if (setMessage) setMessage(&HandleUnrealMessage);
 
+    SetBinaryCallbackFn setBinary = UNREAL_FN(SetBinaryCallbackFn, "UnrealBridge_SetBinaryCallback");
+    if (setBinary) setBinary(&HandleUnrealBinary);
+
+    IsReadyFn isReady = UNREAL_FN(IsReadyFn, "UnrealBridge_IsReady");
+    const BOOL engineReady = isReady && (isReady() != 0);
+    if (!engineReady) {
+        // The framework is linked but no AFlutterBridge actor has registered
+        // yet. That is normal this early: the actor registers in BeginPlay.
+        // Calls made before then are dropped by the framework, not by us.
+        NSLog(@"[UnrealBridge] Framework linked, waiting for AFlutterBridge actor. "
+              @"Place one in your level if messages never arrive.");
+    }
+
+    NSLog(@"[UnrealBridge] Bridge created, callbacks registered");
     return YES;
 }
 
 - (UIView*)getView {
-    NSLog(@"[UnrealBridge] getView called");
-    // On iOS, Unreal Engine manages its own view hierarchy
-    // Return nil - the view is handled by Unreal's window
+    // Unreal owns its own window on iOS; there is no subview to hand back.
     return nil;
 }
 
 - (void)pause {
-    NSLog(@"[UnrealBridge] pause called");
-    if (GFlutterBridgeInstance) {
-        GFlutterBridgeInstance->OnEnginePause();
-    }
+    PauseFn pause = UNREAL_FN(PauseFn, "UnrealBridge_Pause");
+    if (pause) pause(1);
 }
 
 - (void)resume {
-    NSLog(@"[UnrealBridge] resume called");
-    if (GFlutterBridgeInstance) {
-        GFlutterBridgeInstance->OnEngineResume();
-    }
+    PauseFn pause = UNREAL_FN(PauseFn, "UnrealBridge_Pause");
+    if (pause) pause(0);
 }
 
 - (void)quit {
-    NSLog(@"[UnrealBridge] quit called");
-    if (GFlutterBridgeInstance) {
-        GFlutterBridgeInstance->OnEngineQuit();
-    }
-    GUnrealEngineController = nil;
-    GFlutterBridgeInstance = nullptr;
-}
-
-- (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data {
-    NSLog(@"[UnrealBridge] sendMessage: Target=%@, Method=%@", target, method);
-
-    if (GFlutterBridgeInstance) {
-        FString TargetString = NSStringToFString(target);
-        FString MethodString = NSStringToFString(method);
-        FString DataString = NSStringToFString(data);
-        GFlutterBridgeInstance->ReceiveFromFlutter(TargetString, MethodString, DataString);
-    } else {
-        NSLog(@"[UnrealBridge] Warning: FlutterBridge instance not set");
-    }
-}
-
-- (void)executeConsoleCommand:(NSString*)command {
-    NSLog(@"[UnrealBridge] executeConsoleCommand: %@", command);
-    if (GFlutterBridgeInstance) {
-        GFlutterBridgeInstance->ExecuteConsoleCommand(NSStringToFString(command));
-    }
-}
-
-- (void)loadLevel:(NSString*)levelName {
-    NSLog(@"[UnrealBridge] loadLevel: %@", levelName);
-    if (GFlutterBridgeInstance) {
-        GFlutterBridgeInstance->LoadLevel(NSStringToFString(levelName));
-    }
-}
-
-- (void)applyQualitySettings:(NSDictionary*)settings {
-    NSLog(@"[UnrealBridge] applyQualitySettings called");
-    if (!GFlutterBridgeInstance) return;
-
-    TMap<FString, FString> SettingsMap = NSDictionaryToTMap(settings);
-
-    int32 QualityLevel = SettingsMap.Contains(TEXT("qualityLevel")) ? FCString::Atoi(*SettingsMap[TEXT("qualityLevel")]) : -1;
-    int32 AntiAliasing = SettingsMap.Contains(TEXT("antiAliasingQuality")) ? FCString::Atoi(*SettingsMap[TEXT("antiAliasingQuality")]) : -1;
-    int32 Shadow = SettingsMap.Contains(TEXT("shadowQuality")) ? FCString::Atoi(*SettingsMap[TEXT("shadowQuality")]) : -1;
-    int32 PostProcess = SettingsMap.Contains(TEXT("postProcessQuality")) ? FCString::Atoi(*SettingsMap[TEXT("postProcessQuality")]) : -1;
-    int32 Texture = SettingsMap.Contains(TEXT("textureQuality")) ? FCString::Atoi(*SettingsMap[TEXT("textureQuality")]) : -1;
-    int32 Effects = SettingsMap.Contains(TEXT("effectsQuality")) ? FCString::Atoi(*SettingsMap[TEXT("effectsQuality")]) : -1;
-    int32 Foliage = SettingsMap.Contains(TEXT("foliageQuality")) ? FCString::Atoi(*SettingsMap[TEXT("foliageQuality")]) : -1;
-    int32 ViewDistance = SettingsMap.Contains(TEXT("viewDistanceQuality")) ? FCString::Atoi(*SettingsMap[TEXT("viewDistanceQuality")]) : -1;
-
-    GFlutterBridgeInstance->ApplyQualitySettings(QualityLevel, AntiAliasing, Shadow, PostProcess, Texture, Effects, Foliage, ViewDistance);
-}
-
-- (NSDictionary*)getQualitySettings {
-    NSLog(@"[UnrealBridge] getQualitySettings called");
-    if (!GFlutterBridgeInstance) return @{};
-    return TMapToNSDictionary(GFlutterBridgeInstance->GetQualitySettings());
-}
-
-@end
-
-// ============================================================
-// MARK: - C++ Interface for Unreal Engine Callbacks
-// ============================================================
-
-void FlutterBridge_SendToFlutter_iOS(const FString& Target, const FString& Method, const FString& Data)
-{
-    NSString* nsTarget = FStringToNSString(Target);
-    NSString* nsMethod = FStringToNSString(Method);
-    NSString* nsData = FStringToNSString(Data);
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (GUnrealEngineController) {
-            SEL selector = NSSelectorFromString(@"onMessageFromUnrealWithTarget:method:data:");
-            if ([GUnrealEngineController respondsToSelector:selector]) {
-                NSMethodSignature* sig = [GUnrealEngineController methodSignatureForSelector:selector];
-                NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
-                [inv setTarget:GUnrealEngineController];
-                [inv setSelector:selector];
-                [inv setArgument:&nsTarget atIndex:2];
-                [inv setArgument:&nsMethod atIndex:3];
-                [inv setArgument:&nsData atIndex:4];
-                [inv invoke];
-            } else {
-                NSLog(@"[UnrealBridge] Controller doesn't respond to onMessageFromUnrealWithTarget:method:data:");
-            }
-        } else {
-            NSLog(@"[UnrealBridge] Warning: Controller not set");
-        }
-    });
-
-    UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_iOS] Message sent to Flutter: Target=%s, Method=%s"), *Target, *Method);
-}
-
-void FlutterBridge_NotifyLevelLoaded_iOS(const FString& LevelName, int32 BuildIndex)
-{
-    NSString* nsLevelName = FStringToNSString(LevelName);
-    NSNumber* nsBuildIndex = @(BuildIndex);
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (GUnrealEngineController) {
-            SEL selector = NSSelectorFromString(@"onLevelLoadedWithLevelName:buildIndex:");
-            if ([GUnrealEngineController respondsToSelector:selector]) {
-                NSMethodSignature* sig = [GUnrealEngineController methodSignatureForSelector:selector];
-                NSInvocation* inv = [NSInvocation invocationWithMethodSignature:sig];
-                [inv setTarget:GUnrealEngineController];
-                [inv setSelector:selector];
-                [inv setArgument:&nsLevelName atIndex:2];
-                NSInteger buildIndexVal = [nsBuildIndex integerValue];
-                [inv setArgument:&buildIndexVal atIndex:3];
-                [inv invoke];
-            }
-        }
-    });
-
-    UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_iOS] Level loaded: %s"), *LevelName);
-}
-
-void FlutterBridge_SetInstance_iOS(AFlutterBridge* Instance)
-{
-    GFlutterBridgeInstance = Instance;
-    UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_iOS] FlutterBridge instance set"));
-}
-
-#else
-// ============================================================
-// MARK: - Stub Implementation (UnrealFramework not available)
-// ============================================================
-
-#import <Foundation/Foundation.h>
-#import <UIKit/UIKit.h>
-
-// Reference to controller for stub mode
-static id GUnrealEngineController = nil;
-
-@interface UnrealBridge : NSObject
-+ (UnrealBridge*)shared;
-- (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller;
-- (UIView*)getView;
-- (void)pause;
-- (void)resume;
-- (void)quit;
-- (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data;
-- (void)executeConsoleCommand:(NSString*)command;
-- (void)loadLevel:(NSString*)levelName;
-- (void)applyQualitySettings:(NSDictionary*)settings;
-- (NSDictionary*)getQualitySettings;
-@end
-
-@implementation UnrealBridge
-
-+ (UnrealBridge*)shared {
-    static UnrealBridge* instance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        instance = [[UnrealBridge alloc] init];
-    });
-    return instance;
-}
-
-- (BOOL)createWithConfig:(NSDictionary*)config controller:(id)controller {
-    NSLog(@"[UnrealBridge] Stub: create called (UnrealFramework not available)");
-    GUnrealEngineController = controller;
-    // Return NO to indicate Unreal is not actually available
-    return NO;
-}
-
-- (UIView*)getView {
-    NSLog(@"[UnrealBridge] Stub: getView called (UnrealFramework not available)");
-    return nil;
-}
-
-- (void)pause {
-    NSLog(@"[UnrealBridge] Stub: pause called (UnrealFramework not available)");
-}
-
-- (void)resume {
-    NSLog(@"[UnrealBridge] Stub: resume called (UnrealFramework not available)");
-}
-
-- (void)quit {
-    NSLog(@"[UnrealBridge] Stub: quit called (UnrealFramework not available)");
+    StopFn stop = UNREAL_FN(StopFn, "UnrealBridge_Stop");
+    if (stop) stop();
     GUnrealEngineController = nil;
 }
 
 - (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data {
-    NSLog(@"[UnrealBridge] Stub: sendMessage called (UnrealFramework not available)");
+    SendToUnrealFn send = UNREAL_FN(SendToUnrealFn, "UnrealBridge_SendToUnreal");
+    if (!send) {
+        NSLog(@"[UnrealBridge] Cannot send, framework not loaded");
+        return;
+    }
+    send(target.UTF8String, method.UTF8String, data.UTF8String ?: "");
+}
+
+- (void)sendBinaryWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data {
+    SendBinaryToUnrealFn send = UNREAL_FN(SendBinaryToUnrealFn, "UnrealBridge_SendBinaryToUnreal");
+    if (!send) {
+        NSLog(@"[UnrealBridge] Cannot send binary, framework not loaded");
+        return;
+    }
+    // Checksum is computed engine-side on receipt; 0 means "unset".
+    send(target.UTF8String, method.UTF8String, data.bytes, (int32_t)data.length, 0);
 }
 
 - (void)executeConsoleCommand:(NSString*)command {
-    NSLog(@"[UnrealBridge] Stub: executeConsoleCommand called (UnrealFramework not available)");
+    ExecuteConsoleCommandFn exec = UNREAL_FN(ExecuteConsoleCommandFn, "UnrealBridge_ExecuteConsoleCommand");
+    if (exec) exec(command.UTF8String);
 }
 
 - (void)loadLevel:(NSString*)levelName {
-    NSLog(@"[UnrealBridge] Stub: loadLevel called (UnrealFramework not available)");
+    LoadLevelFn load = UNREAL_FN(LoadLevelFn, "UnrealBridge_LoadLevel");
+    if (load) load(levelName.UTF8String);
 }
 
 - (void)applyQualitySettings:(NSDictionary*)settings {
-    NSLog(@"[UnrealBridge] Stub: applyQualitySettings called (UnrealFramework not available)");
+    ApplyQualitySettingsFn apply = UNREAL_FN(ApplyQualitySettingsFn, "UnrealBridge_ApplyQualitySettings");
+    if (!apply) return;
+
+    int32_t (^value)(NSString*) = ^int32_t(NSString* key) {
+        id v = settings[key];
+        return v ? (int32_t)[v intValue] : -1;
+    };
+
+    apply(
+        value(@"qualityLevel"),
+        value(@"antiAliasingQuality"),
+        value(@"shadowQuality"),
+        value(@"postProcessQuality"),
+        value(@"textureQuality"),
+        value(@"effectsQuality"),
+        value(@"foliageQuality"),
+        value(@"viewDistanceQuality"));
 }
 
 - (NSDictionary*)getQualitySettings {
-    NSLog(@"[UnrealBridge] Stub: getQualitySettings called (UnrealFramework not available)");
-    return @{};
+    GetQualitySettingsFn get = UNREAL_FN(GetQualitySettingsFn, "UnrealBridge_GetQualitySettings");
+    if (!get) return @{};
+
+    int32_t values[kUnrealQualityValueCount];
+    const int32_t written = get(values, kUnrealQualityValueCount);
+    if (written < kUnrealQualityValueCount) {
+        // The framework serves a cache refreshed on the game thread, so the
+        // very first call can land before it is populated.
+        return @{};
+    }
+
+    NSArray<NSString*>* keys = UnrealQualityKeys();
+    NSMutableDictionary* result = [NSMutableDictionary dictionaryWithCapacity:keys.count];
+    for (NSUInteger i = 0; i < keys.count; i++) {
+        result[keys[i]] = @(values[i]);
+    }
+    return result;
 }
 
 @end
-
-#endif // __has_include("FlutterBridge.h")
