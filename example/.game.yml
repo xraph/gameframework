@@ -6,6 +6,34 @@ version: 1.0.0
 
 # Engine configurations
 engines:
+  unreal:
+    project_path: unreal/demo
+    export_path: unreal/demo_exports
+    
+    export_settings:
+      development: false
+      build_configuration: Shipping
+    
+    platforms:
+      android:
+        enabled: true
+        target_path: android/unrealLibrary
+      
+      ios:
+        enabled: true
+        target_path: ios/UnrealFramework.framework
+      
+      macos:
+        enabled: false
+        target_path: macos/UnrealFramework.framework
+      
+      windows:
+        enabled: false
+        target_path: windows/unreal_build
+      
+      linux:
+        enabled: false
+        target_path: linux/unreal_build
   unity:
     # Path to your Unity project
     project_path: unity/demo/Demo
