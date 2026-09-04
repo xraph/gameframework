@@ -1,5 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--FlutterPlugin Android UPL (Unreal Plugin Language) additions-->
+<!--
+	FlutterPlugin Android UPL (Unreal Plugin Language) additions.
+
+	UPL runs inside UnrealBuildTool while it generates the intermediate Android
+	project, so everything declared here is already present in
+	Intermediate/Android/<arch>/ before game-cli ever looks at the tree.
+
+	This is deliberate. The library-mode Java below used to be spliced into
+	Epic's generated GameActivity.java after the fact by game-cli, keyed off a
+	literal source line. When that line moved between engine versions the splice
+	silently no-opped and shipped a black screen. Declared here instead, a schema
+	change breaks the build at UBT time with a node name to search for.
+
+	Everything in this file is safe for standalone (non-Flutter) packaging too:
+	the additions are unreferenced static members in that case. Anything that
+	would break a normal APK, such as stripping the launcher intent-filter, stays
+	in game-cli's library conversion where it belongs.
+-->
 <root xmlns:android="http://schemas.android.com/apk/res/android">
 	<!-- init section is always evaluated once per architecture -->
 	<init>
@@ -11,12 +28,307 @@
 		<addPermission android:name="android.permission.INTERNET"/>
 	</androidManifestUpdates>
 
+	<!--
+		Keep the library-mode entry points. game-cli's Kotlin controller reaches
+		these by reflection (Class.forName + getMethod), so R8 sees no callers and
+		would strip them from a minified release build.
+	-->
+	<proguardAdditions>
+		<insert>
+-keep class com.epicgames.unreal.GameActivity {
+    public static &lt;methods&gt;;
+}
+-keepclasseswithmembernames class com.epicgames.unreal.GameActivity {
+    native &lt;methods&gt;;
+}
+		</insert>
+	</proguardAdditions>
+
+	<!--
+		No extra dependencies are needed by this plugin. Dependencies contributed
+		here by OTHER plugins' UPL are preserved: game-cli carries the generated
+		app/build.gradle dependencies block into the unrealLibrary module.
+	-->
+	<buildGradleAdditions>
+	</buildGradleAdditions>
+
 	<!-- optional additions to the GameActivity imports in GameActivity.java -->
 	<gameActivityImportAdditions>
+		<insert>
+import android.app.Activity;
+import android.content.Context;
+import android.os.Bundle;
+import android.view.SurfaceHolder;
+		</insert>
 	</gameActivityImportAdditions>
 
-	<!-- optional additions to the GameActivity class in GameActivity.java -->
+	<!--
+		Library-mode support: lets Unreal initialise and render into a Surface
+		handed over by Flutter, without a GameActivity lifecycle of its own.
+
+		game-cli asserts that the marker string "sLibraryMode" is present in the
+		generated GameActivity.java and fails the export if it is not, so a
+		version skew here surfaces as an export error rather than a blank widget.
+	-->
 	<gameActivityClassAdditions>
+		<insert>
+<![CDATA[
+
+	// ========== LIBRARY MODE SUPPORT ==========
+	// These fields and methods enable Unreal to run as a library embedded in Flutter
+	private static boolean sLibraryMode = false;
+	private static boolean sLibraryInitialized = false;
+	private static boolean sEngineRunning = false;
+	private static Context sApplicationContext = null;
+	private static Activity sHostActivity = null;
+	private static SurfaceHolder sExternalSurfaceHolder = null;
+	private static int sExternalSurfaceWidth = 0;
+	private static int sExternalSurfaceHeight = 0;
+
+	/**
+	 * Check if running in library mode (embedded in another app like Flutter)
+	 */
+	public static boolean isLibraryMode() {
+		return sLibraryMode;
+	}
+
+	/**
+	 * Check if the library has been initialized
+	 */
+	public static boolean isLibraryInitialized() {
+		return sLibraryInitialized;
+	}
+
+	/**
+	 * Check if the engine is currently running
+	 */
+	public static boolean isEngineRunning() {
+		return sEngineRunning;
+	}
+
+	/**
+	 * Initialize Unreal Engine for library mode (embedded in Flutter).
+	 * This method sets up the native engine without requiring a full Activity lifecycle.
+	 * 
+	 * @param context Application context
+	 * @param hostActivity The host Activity (Flutter's MainActivity)
+	 * @return true if initialization was successful
+	 */
+	public static boolean initializeForLibraryMode(Context context, Activity hostActivity) {
+		if (sLibraryInitialized) {
+			Log.debug("[GameActivity] Library mode already initialized");
+			return true;
+		}
+
+		Log.debug("[GameActivity] Initializing for library mode...");
+		sLibraryMode = true;
+		sApplicationContext = context.getApplicationContext();
+		sHostActivity = hostActivity;
+
+		try {
+			// Load Unreal library if not already loaded
+			try {
+				System.loadLibrary("Unreal");
+				Log.debug("[GameActivity] libUnreal.so loaded successfully");
+			} catch (UnsatisfiedLinkError e) {
+				Log.debug("[GameActivity] libUnreal.so already loaded or error: " + e.getMessage());
+			}
+
+			// Get paths
+			String internalFilesDir = context.getFilesDir().getPath();
+			String externalFilesDir = context.getExternalFilesDir(null) != null ? 
+				context.getExternalFilesDir(null).getPath() : internalFilesDir;
+			String apkPath = context.getPackageResourcePath();
+
+			// Read metadata from manifest (with defaults)
+			String projectName = "GameFrameworkProject";
+			String packageName = context.getPackageName();
+			int versionCode = 1;
+			boolean useExternalFilesDir = true;
+			boolean publicLogFiles = false;
+			boolean obbInApk = true;
+			int depthBufferPreference = 0;
+			int propagateAlpha = 0;
+
+			try {
+				android.content.pm.ApplicationInfo appInfo = context.getPackageManager()
+					.getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA);
+				Bundle metaData = appInfo.metaData;
+				if (metaData != null) {
+					projectName = metaData.getString("com.epicgames.unreal.GameActivity.ProjectName", projectName);
+					useExternalFilesDir = metaData.getBoolean("com.epicgames.unreal.GameActivity.bUseExternalFilesDir", useExternalFilesDir);
+					publicLogFiles = metaData.getBoolean("com.epicgames.unreal.GameActivity.bPublicLogFiles", publicLogFiles);
+					obbInApk = metaData.getBoolean("com.epicgames.unreal.GameActivity.bPackageDataInsideApk", obbInApk);
+					depthBufferPreference = metaData.getInt("com.epicgames.unreal.GameActivity.DepthBufferPreference", depthBufferPreference);
+					propagateAlpha = metaData.getInt("com.epicgames.unreal.GameActivity.PropagateAlpha", propagateAlpha);
+				}
+				android.content.pm.PackageInfo pkgInfo = context.getPackageManager()
+					.getPackageInfo(packageName, 0);
+				versionCode = pkgInfo.versionCode;
+			} catch (Exception e) {
+				Log.debug("[GameActivity] Error reading manifest metadata: " + e.getMessage());
+			}
+
+			Log.debug("[GameActivity] Calling nativeSetGlobalActivity...");
+			Log.debug("[GameActivity]   internalFilesDir: " + internalFilesDir);
+			Log.debug("[GameActivity]   externalFilesDir: " + externalFilesDir);
+			Log.debug("[GameActivity]   apkPath: " + apkPath);
+
+			// Create a temporary GameActivity instance for JNI calls
+			// The native methods are bound to the GameActivity class
+			GameActivity tempInstance = new GameActivity();
+			tempInstance.nativeSetGlobalActivity(useExternalFilesDir, publicLogFiles, 
+				internalFilesDir, externalFilesDir, obbInApk, apkPath);
+
+			// Get display orientation
+			boolean isPortrait = context.getResources().getConfiguration().orientation == 
+				android.content.res.Configuration.ORIENTATION_PORTRAIT;
+
+			Log.debug("[GameActivity] Calling nativeSetWindowInfo...");
+			tempInstance.nativeSetWindowInfo(isPortrait, depthBufferPreference, propagateAlpha);
+
+			// Set Android version information
+			String language = java.util.Locale.getDefault().toString();
+			int targetSdk = context.getApplicationInfo().targetSdkVersion;
+			
+			Log.debug("[GameActivity] Calling nativeSetAndroidVersionInformation...");
+			tempInstance.nativeSetAndroidVersionInformation(
+				android.os.Build.VERSION.RELEASE,
+				targetSdk,
+				android.os.Build.MANUFACTURER,
+				android.os.Build.MODEL,
+				android.os.Build.DISPLAY,
+				language,
+				projectName
+			);
+
+			// Set OBB info
+			Log.debug("[GameActivity] Calling nativeSetObbInfo...");
+			tempInstance.nativeSetObbInfo(projectName, packageName, versionCode, 0, "");
+
+			// Set startup state
+			boolean debuggerAttached = android.os.Debug.isDebuggerConnected();
+			tempInstance.nativeSetAndroidStartupState(debuggerAttached);
+
+			sLibraryInitialized = true;
+			Log.debug("[GameActivity] Library mode initialization complete");
+			return true;
+
+		} catch (Exception e) {
+			Log.debug("[GameActivity] Library mode initialization failed: " + e.getMessage());
+			e.printStackTrace();
+			return false;
+		}
+	}
+
+	/**
+	 * Set an external surface for Unreal to render to (called from Flutter).
+	 * This starts the engine if not already running.
+	 * 
+	 * @param holder The SurfaceHolder from Flutter's SurfaceView
+	 * @param width Surface width
+	 * @param height Surface height
+	 */
+	public static void setExternalSurface(SurfaceHolder holder, int width, int height) {
+		Log.debug("[GameActivity] setExternalSurface: " + width + "x" + height);
+		
+		sExternalSurfaceHolder = holder;
+		sExternalSurfaceWidth = width;
+		sExternalSurfaceHeight = height;
+
+		if (!sLibraryInitialized) {
+			Log.debug("[GameActivity] ERROR: Library not initialized, call initializeForLibraryMode first");
+			return;
+		}
+
+		try {
+			// Create temp instance for JNI calls
+			GameActivity tempInstance = new GameActivity();
+
+			// Set surface view info
+			Log.debug("[GameActivity] Calling nativeSetSurfaceViewInfo...");
+			tempInstance.nativeSetSurfaceViewInfo(width, height);
+
+			// Start the engine if not already running
+			if (!sEngineRunning) {
+				Log.debug("[GameActivity] Calling nativeResumeMainInit to start engine...");
+				tempInstance.nativeResumeMainInit();
+				sEngineRunning = true;
+				Log.debug("[GameActivity] Engine started!");
+			}
+		} catch (Exception e) {
+			Log.debug("[GameActivity] setExternalSurface failed: " + e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * Update the external surface dimensions (called when surface changes).
+	 * 
+	 * @param width New width
+	 * @param height New height
+	 */
+	public static void updateExternalSurface(int width, int height) {
+		Log.debug("[GameActivity] updateExternalSurface: " + width + "x" + height);
+		
+		sExternalSurfaceWidth = width;
+		sExternalSurfaceHeight = height;
+
+		if (!sLibraryInitialized || !sEngineRunning) {
+			Log.debug("[GameActivity] Engine not running, skipping surface update");
+			return;
+		}
+
+		try {
+			GameActivity tempInstance = new GameActivity();
+			tempInstance.nativeSetSurfaceViewInfo(width, height);
+		} catch (Exception e) {
+			Log.debug("[GameActivity] updateExternalSurface failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Clear the external surface (called when surface is destroyed).
+	 */
+	public static void clearExternalSurface() {
+		Log.debug("[GameActivity] clearExternalSurface");
+		sExternalSurfaceHolder = null;
+		sExternalSurfaceWidth = 0;
+		sExternalSurfaceHeight = 0;
+	}
+
+	/**
+	 * Pause the engine in library mode.
+	 */
+	public static void pauseEngineLibraryMode() {
+		Log.debug("[GameActivity] pauseEngineLibraryMode");
+		// Note: Unreal doesn't have a simple pause JNI call
+		// The engine pauses when the Activity pauses
+		// For library mode, we might need to implement this differently
+	}
+
+	/**
+	 * Resume the engine in library mode.
+	 */
+	public static void resumeEngineLibraryMode() {
+		Log.debug("[GameActivity] resumeEngineLibraryMode");
+		// Similar to pause, resume is tied to Activity lifecycle
+	}
+
+	/**
+	 * Shutdown the engine in library mode.
+	 */
+	public static void shutdownEngineLibraryMode() {
+		Log.debug("[GameActivity] shutdownEngineLibraryMode");
+		sEngineRunning = false;
+		sLibraryInitialized = false;
+		sExternalSurfaceHolder = null;
+		// Note: Unreal doesn't have a clean shutdown JNI call
+		// The engine shuts down when the Activity is destroyed
+	}
+	// ========== END LIBRARY MODE SUPPORT ==========
+]]>
+		</insert>
 	</gameActivityClassAdditions>
 
 	<!-- optional additions to GameActivity onCreate metadata reading in GameActivity.java -->
