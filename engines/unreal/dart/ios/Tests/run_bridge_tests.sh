@@ -15,6 +15,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$HERE/../Classes/UnrealBridge.mm"
+DELEGATE_SRC="$HERE/../Classes/UnrealAppDelegate.mm"
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 
@@ -49,24 +50,34 @@ compile_mm() {
 
 echo "Building bridge..."
 compile_mm "$SRC" "$BUILD/UnrealBridge.o"
+compile_mm "$DELEGATE_SRC" "$BUILD/UnrealAppDelegate.o"
 
 echo "Building mock framework..."
 xcrun --sdk "$SDK" clang -target "$TARGET" -dynamiclib \
   -install_name @rpath/MockUnreal.dylib \
-  "$HERE/MockUnrealFramework.c" -o "$BUILD/MockUnreal.dylib"
+  "$HERE/MockUnrealFramework.c" "$HERE/MockUnrealAppDelegate.m" \
+  -framework Foundation -framework UIKit -o "$BUILD/MockUnreal.dylib"
 
 echo
 echo "=== Framework absent ==="
 compile_mm "$HERE/UnrealBridgeAbsentTests.mm" "$BUILD/absent.o"
 xcrun --sdk "$SDK" clang++ -target "$TARGET" \
-  "$BUILD/UnrealBridge.o" "$BUILD/absent.o" \
+  "$BUILD/UnrealBridge.o" "$BUILD/UnrealAppDelegate.o" "$BUILD/absent.o" \
   -framework Foundation -framework UIKit -framework QuartzCore -o "$BUILD/absent"
 xcrun simctl spawn "$UDID" "$BUILD/absent" 2>&1 | grep -v '^20[0-9][0-9]-'
+
+echo
+echo "=== App delegate contract ==="
+compile_mm "$HERE/UnrealAppDelegateTests.mm" "$BUILD/delegate.o"
+xcrun --sdk "$SDK" clang++ -target "$TARGET" \
+  "$BUILD/UnrealAppDelegate.o" "$BUILD/delegate.o" \
+  -framework Foundation -framework UIKit -o "$BUILD/delegate"
+xcrun simctl spawn "$UDID" "$BUILD/delegate" 2>&1 | grep -v '^20[0-9][0-9]-'
 
 echo
 echo "=== Framework present (mock) ==="
 compile_mm "$HERE/UnrealBridgeTests.mm" "$BUILD/live.o"
 xcrun --sdk "$SDK" clang++ -target "$TARGET" \
-  "$BUILD/UnrealBridge.o" "$BUILD/live.o" "$BUILD/MockUnreal.dylib" \
+  "$BUILD/UnrealBridge.o" "$BUILD/UnrealAppDelegate.o" "$BUILD/live.o" "$BUILD/MockUnreal.dylib" \
   -framework Foundation -framework UIKit -framework QuartzCore -rpath "$BUILD" -o "$BUILD/live"
 xcrun simctl spawn "$UDID" "$BUILD/live" 2>&1 | grep -v '^20[0-9][0-9]-'

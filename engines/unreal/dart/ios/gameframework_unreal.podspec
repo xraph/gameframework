@@ -21,6 +21,12 @@ to sync your Unreal export to your plugin's ios/ directory.
   s.author           = { 'xraph' => 'rex@xraph.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
+
+  # The only header a host app is meant to import. It declares Unreal's
+  # IOSAppDelegate so an app delegate can subclass it, which the engine requires.
+  # Reach it from Runner-Bridging-Header.h as:
+  #   #import <gameframework_unreal/UnrealAppDelegate.h>
+  s.public_header_files = 'Classes/UnrealAppDelegate.h'
   s.dependency 'Flutter'
   s.dependency 'gameframework'
   s.platform = :ios, '15.0'

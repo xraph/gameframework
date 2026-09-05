@@ -3,6 +3,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+#import "UnrealAppDelegate.h"
+
 // ============================================================
 // MARK: - UnrealFramework C ABI
 // ============================================================
@@ -315,6 +317,13 @@ static void StopTicking(void) {
         NSLog(@"[UnrealBridge] UnrealFramework is not linked into this app. "
               @"Run 'game export unreal -p ios' and 'game sync unreal -p ios', "
               @"and check the framework is embedded in the Xcode target.");
+        return NO;
+    }
+
+    // Unreal treats a delegate that does not descend from IOSAppDelegate as
+    // fatal, and it would crash somewhere far less obvious than here. Check it
+    // while there is still something useful to say about it.
+    if (!UnrealAssertAppDelegateUsable()) {
         return NO;
     }
 

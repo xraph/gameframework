@@ -2,6 +2,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
+#import "../Classes/UnrealAppDelegate.h"
+
 int main(void) {
     @autoreleasepool {
         Class cls = NSClassFromString(@"UnrealBridge");
@@ -36,6 +38,15 @@ int main(void) {
 
         ((void(*)(id, SEL))objc_msgSend)(shared, NSSelectorFromString(@"quit"));
         printf("PASS: all bridge calls survived with no framework loaded\n");
+
+        // The delegate check looks the class up by name, so with no framework
+        // loaded it has to refuse. This is the one path through
+        // UnrealAssertAppDelegateUsable that a hostless binary can reach.
+        const BOOL usable = UnrealAssertAppDelegateUsable();
+        printf("%s: the delegate check refuses when the framework is absent\n",
+               usable ? "FAIL" : "PASS");
+        if (usable) return 1;
+
         return 0;
     }
 }

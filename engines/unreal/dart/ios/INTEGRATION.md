@@ -22,39 +22,92 @@ needs is a delegate that registers plugins and forwards application lifecycle to
 them. So the working shape is a delegate that subclasses `IOSAppDelegate` and
 conforms to `FlutterPluginRegistry` and `FlutterAppLifeCycleProvider`.
 
-## Building the delegate class at runtime
+## Subclass it directly
 
-This is the approach verified on device. It needs no Unreal headers, because the
-framework exports the class and you subclass it through the Objective-C runtime.
+The pod ships a header that declares `IOSAppDelegate` for you, so you can
+subclass it from your own app without any engine headers.
 
-Replace your app's `main.m`:
+Add this to `ios/Runner/Runner-Bridging-Header.h`:
 
 ```objc
-#import <UIKit/UIKit.h>
-#import <objc/runtime.h>
+#import <gameframework_unreal/UnrealAppDelegate.h>
+```
 
-int main(int argc, char* argv[]) {
-    @autoreleasepool {
-        Class base = NSClassFromString(@"IOSAppDelegate");
-        if (!base) {
-            // UnrealFramework is not linked. Fall back so the app still runs,
-            // with no engine.
-            base = NSClassFromString(@"FlutterAppDelegate");
+Then write `ios/Runner/AppDelegate.swift` against it:
+
+```swift
+import UIKit
+import Flutter
+
+@main
+class AppDelegate: IOSAppDelegate {
+    override func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        if let controller = unrealWindow?.rootViewController as? FlutterViewController {
+            GeneratedPluginRegistrant.register(with: controller)
         }
-        Class delegate = objc_allocateClassPair(base, "AppDelegate", 0);
-        objc_registerClassPair(delegate);
-        return UIApplicationMain(argc, argv, nil, @"AppDelegate");
+        return true
     }
 }
 ```
 
-Then register your plugins from `application:didFinishLaunchingWithOptions:` on
-that class, using a category or `class_addMethod`.
+Three things in there are load bearing.
 
-Do not call `super`'s `didFinishLaunchingWithOptions`. In an embedded build it
-would start Unreal the non-embedded way and fight with the pod, which starts it
-for you. `IOSAppDelegate` caches itself in `init`, which `UIApplicationMain`
-already did, so the engine can still find it.
+Do not call `super`. In an embedded build that starts Unreal the non-embedded
+way and fights with the pod, which starts it for you. `IOSAppDelegate` caches
+itself during `init`, which has already run by this point, so the engine still
+finds its delegate.
+
+Register plugins against the `FlutterViewController`, not against `self`.
+Normally `GeneratedPluginRegistrant.register(with: self)` works because
+`FlutterAppDelegate` conforms to `FlutterPluginRegistry`, and you no longer
+inherit from it. `FlutterViewController` conforms too, and your storyboard
+already creates one as the root view controller.
+
+**Do not declare a `window` property.** This is the one that will cost you an
+afternoon, so it gets its own section.
+
+### The window trap
+
+Unreal reads its own `Window` to work out the interface orientation. It only
+assigns that window on the startup path you just skipped, so you would expect it
+to be nil. It is not, and the reason is a naming coincidence.
+
+Unreal spells the property with a capital W. Objective-C builds a setter from
+that by capitalising the first letter, giving `setWindow:`. That is the exact
+selector UIKit calls on your app delegate when the storyboard loads its window.
+So UIKit hands Unreal its window without either side knowing about the other.
+
+Declare `var window: UIWindow?` in your delegate and you take that selector
+over. Unreal's `Window` stays nil, orientation goes wrong, and nothing anywhere
+reports an error. Leave it out and read `unrealWindow` when you need it.
+
+The bridge checks for this before starting the engine and logs a warning naming
+the setter, so you do not have to remember. It is a warning rather than a
+refusal, because an app driving Unreal from a scene delegate legitimately has no
+window on the app delegate.
+
+### Two more things worth knowing
+
+Subclassing needs the class at link time, so the app has to link
+UnrealFramework. That is already true for anything embedding Unreal, but it
+means this header is no use in a build without the framework.
+
+The header redeclares a class Epic owns, and nothing checks that redeclaration
+against the real one at compile time. So the bridge checks it at runtime
+instead, before starting the engine, and refuses with a clear log line if the
+shape has drifted or if your delegate does not descend from `IOSAppDelegate`
+after all. Call `UnrealAssertAppDelegateUsable()` yourself if you want to fail
+earlier.
+
+### Naming
+
+| Objective-C | Swift | What it is |
+|---|---|---|
+| `Window` | `unrealWindow` | Unreal's window. Renamed because the capital W collides with `UIApplicationDelegate`'s `window`, and Swift otherwise decides the two are one property under an old name and refuses to let you touch it. |
+| `IOSView` | `iosView` | Unreal's render view. Read only. |
 
 ## What the pod does for you
 
