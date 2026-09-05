@@ -40,6 +40,16 @@ extern bool FlutterBridge_IsEngineReadyForView();
 /// cleared in UnrealBridge_DestroyView so it cannot outlive the view.
 static FIOSView* GEmbeddedView = nil;
 
+/// Whether UnrealBridge_StartEngine has been called.
+///
+/// FAppEntry blocks the game thread waiting for AppDelegate.IOSView, and it
+/// only announces readiness from the main thread once config is loaded. A host
+/// that waits for that announcement before building the view is relying on the
+/// two crossing in the right order. Creating the view up front is the other
+/// way round, so both are allowed: before the engine is started, or after it
+/// says it is ready.
+static bool GEngineStartRequested = false;
+
 /// Apply the size Unreal should render at.
 ///
 /// The engine works in pixels while the host talks in points, so the scale
@@ -77,8 +87,7 @@ int32_t UnrealBridge_StartEngine(void)
 		return 0;
 	}
 
-	static bool bStarted = false;
-	if (bStarted)
+	if (GEngineStartRequested)
 	{
 		return 1;
 	}
@@ -90,7 +99,7 @@ int32_t UnrealBridge_StartEngine(void)
 	//
 	// It reaches for [IOSAppDelegate GetDelegate], which is Fatal if the app's
 	// delegate does not subclass IOSAppDelegate.
-	bStarted = true;
+	GEngineStartRequested = true;
 	[FIOSView StartupEmbeddedUnreal];
 
 	UE_LOG(LogTemp, Log, TEXT("[FlutterView_IOS] Engine start requested"));
@@ -113,15 +122,26 @@ void* UnrealBridge_CreateView(float Width, float Height, float Scale)
 		return nullptr;
 	}
 
-	// The engine announces when the config it needs has been read, and the view
-	// depends on that. Building one earlier is a race, so refuse and let the
-	// host wait for UnrealBridge_SetEngineReadyCallback instead of getting a
-	// view that half works.
-	if (!FlutterBridge_IsEngineReadyForView())
+	// Do not wait for the engine to announce readiness. It cannot arrive in
+	// time, and relying on it deadlocks.
+	//
+	// FEngineLoop::PreInit calls FPlatformMisc::PlatformInit (which on iOS is
+	// FAppEntry::PlatformInit) at around line 2886. That broadcasts
+	// "inisareready" and then blocks, spinning until AppDelegate.IOSView
+	// exists. Plugin modules for the PreDefault phase do not load until around
+	// line 4675, which execution never reaches. So the broadcast happens before
+	// anything in this plugin is alive to hear it, and the engine then waits
+	// for a view that a host listening for that broadcast will never create.
+	//
+	// The engine polls for the view, so the host can simply make one once the
+	// engine has been started, and the wait loop picks it up. Before
+	// StartEngine is too early: Metal comes up as part of engine startup, and
+	// building a view without it crashes.
+	if (!GEngineStartRequested)
 	{
 		UE_LOG(LogTemp, Warning,
-			TEXT("[FlutterView_IOS] Engine has not signalled readiness yet; "
-				 "register UnrealBridge_SetEngineReadyCallback and create the view from there"));
+			TEXT("[FlutterView_IOS] Call UnrealBridge_StartEngine before creating a view; "
+				 "Metal is not up until the engine starts"));
 		return nullptr;
 	}
 
