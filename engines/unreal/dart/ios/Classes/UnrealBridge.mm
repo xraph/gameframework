@@ -50,6 +50,7 @@ typedef void (*KeepAwakeFn)(const char*, int32_t);
 typedef void (*AllowSleepFn)(const char*);
 typedef void (*EngineReadyCallback)(void);
 typedef void (*SetEngineReadyCallbackFn)(EngineReadyCallback);
+typedef int32_t (*StartEngineFn)(void);
 typedef int32_t (*IsReadyForViewFn)(void);
 typedef void* (*CreateViewFn)(float, float, float);
 typedef void (*ResizeViewFn)(float, float, float);
@@ -196,7 +197,19 @@ static void HandleUnrealBinary(const char* target, const char* method,
 // Ticking happens on the main thread. That is where the host lives, and where
 // an embedded engine expects to be driven from.
 
+// Defined below, once the UnrealBridge class exists.
+static void BuildViewNowThatEngineIsReady(void);
+static BOOL HasEngineView(void);
+
 static void UnrealTick(double deltaSeconds) {
+    // The engine blocks in PreInit polling for AppDelegate.IOSView, so keep
+    // offering one until it takes. This is also the only workable moment: too
+    // early and Metal is not up, and the readiness announcement that would
+    // otherwise tell us cannot reach a plugin that has not loaded yet.
+    if (!HasEngineView()) {
+        BuildViewNowThatEngineIsReady();
+    }
+
     TickFn tick = UNREAL_FN(TickFn, "UnrealBridge_Tick");
     if (tick) {
         tick((float)deltaSeconds);
@@ -250,15 +263,6 @@ static void StopTicking(void) {
 // The engine reads its config before a render view can exist, and announces
 // when that is done. Asking earlier gets NULL, so the bridge registers for the
 // signal and builds the view when it lands rather than guessing at a delay.
-
-static void BuildViewNowThatEngineIsReady(void);
-
-/// Fires on the game thread, so hop to main before touching UIKit.
-static void OnEngineReady(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        BuildViewNowThatEngineIsReady();
-    });
-}
 
 // ============================================================
 // MARK: - UnrealBridge
@@ -322,11 +326,22 @@ static void OnEngineReady(void) {
     SetBinaryCallbackFn setBinary = UNREAL_FN(SetBinaryCallbackFn, "UnrealBridge_SetBinaryCallback");
     if (setBinary) setBinary(&HandleUnrealBinary);
 
-    // Ask to be told when a view can be made. If the engine already announced
-    // it, this fires straight away rather than never.
-    SetEngineReadyCallbackFn setReady =
-        UNREAL_FN(SetEngineReadyCallbackFn, "UnrealBridge_SetEngineReadyCallback");
-    if (setReady) setReady(&OnEngineReady);
+    // Start the engine. Nothing else works until this runs: it is what brings
+    // Metal up, and the render view cannot be built before it.
+    //
+    // Deliberately not waiting for the engine's readiness announcement. It
+    // broadcasts "inisareready" from PreInit and then blocks waiting for a
+    // view, and plugin modules only load later in PreInit, so by the time
+    // anything here could subscribe the announcement has been and gone and the
+    // engine is already stuck. The view is offered from the tick instead, which
+    // matches how the engine polls for it.
+    StartEngineFn startEngine = UNREAL_FN(StartEngineFn, "UnrealBridge_StartEngine");
+    if (startEngine) {
+        NSLog(@"[UnrealBridge] StartEngine -> %d", startEngine());
+    }
+
+    KeepAwakeFn keepAwake = UNREAL_FN(KeepAwakeFn, "UnrealBridge_KeepAwake");
+    if (keepAwake) keepAwake("flutter", 1);
 
     IsReadyFn isReady = UNREAL_FN(IsReadyFn, "UnrealBridge_IsReady");
     const BOOL engineReady = isReady && (isReady() != 0);
@@ -478,6 +493,10 @@ static void OnEngineReady(void) {
 // ============================================================
 // MARK: - Deferred view creation
 // ============================================================
+
+static BOOL HasEngineView(void) {
+    return UnrealBridge.shared.engineView != nil;
+}
 
 static void BuildViewNowThatEngineIsReady(void) {
     UnrealBridge* bridge = UnrealBridge.shared;

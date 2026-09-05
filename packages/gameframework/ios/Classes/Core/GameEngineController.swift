@@ -6,12 +6,21 @@ import UIKit
  */
 class GameEngineContainerView: UIView {
     weak var engineView: UIView?
-    
+
+    /// Fires after the engine view has been stretched to match the container.
+    ///
+    /// Engines that render into their own surface have to be told the new size.
+    /// Resizing the UIView alone leaves them drawing at whatever resolution
+    /// they started at, which shows up as a blurry or cropped scene after a
+    /// rotation rather than as an obvious failure.
+    var onEngineViewResized: ((CGSize) -> Void)?
+
     override func layoutSubviews() {
         super.layoutSubviews()
         // Automatically resize engine view to match container bounds
         if let engineView = engineView, !bounds.isEmpty {
             engineView.frame = bounds
+            onEngineViewResized?(bounds.size)
         }
     }
 }
@@ -121,7 +130,17 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
 
         self.channel.setMethodCallHandler(handleMethodCall)
         self.eventChannel.setStreamHandler(self)
+
+        // Weakly, because the controller owns the container.
+        self.containerView.onEngineViewResized = { [weak self] size in
+            self?.engineViewDidResize(to: size)
+        }
     }
+
+    /// Called on the main thread whenever the container has resized the engine
+    /// view. Override it if your engine needs its render surface resized too.
+    /// The default does nothing.
+    open func engineViewDidResize(to size: CGSize) {}
 
     // MARK: - Abstract Methods (Override in subclasses)
 

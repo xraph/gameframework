@@ -25,13 +25,23 @@ static void check(bool ok, const char* what) {
 @property (nonatomic, copy) NSString* gotMethod;
 @property (nonatomic, copy) NSString* gotData;
 @property (nonatomic, copy) NSString* gotLevel;
+@property (nonatomic, strong) UIView* gotView;
 @end
+
+// How many times the bridge handed a view to the controller. This is the
+// handoff the Flutter platform view depends on, so it is worth counting rather
+// than merely observing.
+static int gViewReadyCallbacks = 0;
 @implementation FakeController
 - (void)onMessageFromUnrealWithTarget:(NSString*)t method:(NSString*)m data:(NSString*)d {
     self.gotTarget = t; self.gotMethod = m; self.gotData = d;
 }
 - (void)onLevelLoadedWithLevelName:(NSString*)n buildIndex:(NSInteger)i {
     self.gotLevel = n;
+}
+- (void)onUnrealViewReadyWithView:(UIView*)v {
+    self.gotView = v;
+    gViewReadyCallbacks++;
 }
 @end
 
@@ -97,20 +107,34 @@ int main(void) {
         // A real view, because the bridge stores it weakly and ARC will not
         // register a weak reference to an arbitrary pointer.
         UIView* fakeEngineView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
-        MockUnreal_SetView((__bridge void*)fakeEngineView);
 
-        // The engine has not announced readiness, so no view should exist yet.
-        check(gCreateViewCalls == 0,
-              "no render view is built before the engine signals readiness");
+        // Readiness is whatever CreateView returns, not a separate announcement.
+        // The engine broadcasts readiness from PreInit and then blocks waiting
+        // for a view, and plugin modules load later in that same PreInit, so
+        // nothing here can ever hear the broadcast. The bridge polls from the
+        // tick instead, which is how the engine expects to be handed a view.
+        //
+        // Until the engine can make one, CreateView returns NULL and the bridge
+        // has nothing to show.
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+        check(gCreateViewCalls > 0,
+              "the bridge keeps offering to build a view while the engine starts");
         check(((id(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"getView")) == nil,
               "getView returns nil while the engine is still starting");
 
-        MockUnreal_SignalEngineReady();
-        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
-        check(gCreateViewCalls == 1,
-              "the render view is built once the engine announces it can be");
+        // Now let the engine hand one back.
+        MockUnreal_SetView((__bridge void*)fakeEngineView);
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
         check(((id(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"getView")) == fakeEngineView,
               "getView hands back the engine's view once it exists");
+        check(gViewReadyCallbacks == 1 && controller.gotView == fakeEngineView,
+              "the controller is handed that exact view, exactly once");
+
+        // The poll has to stop, or it runs at display-link rate forever.
+        const int callsOnceBuilt = gCreateViewCalls;
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.2]];
+        check(gCreateViewCalls == callsOnceBuilt,
+              "the bridge stops asking once it has a view");
 
         ((void(*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"quit"));
         check(gStopped == 1, "quit stops the framework");

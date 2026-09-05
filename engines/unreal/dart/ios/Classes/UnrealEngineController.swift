@@ -129,11 +129,38 @@ public class UnrealEngineController: GameEngineController {
         NSLog("UnrealEngineController: Unreal render view arrived")
         self.unrealView = view
         self.attachEngine()
+
+        // Tell the engine the size it is actually rendering at. The container
+        // resizes the view for us, but the engine works in pixels and will keep
+        // rendering at its startup guess until it is told otherwise.
+        self.syncEngineSurfaceSize()
         self.sendEvent(name: "onMessage", data: [
             "target": "Unreal",
             "method": "onViewReady",
             "data": "{\"success\":true}"
         ])
+    }
+
+    public override func engineViewDidResize(to size: CGSize) {
+        syncEngineSurfaceSize()
+    }
+
+    /// Push the current container size down to the engine.
+    ///
+    /// Sizes cross the bridge in points and the engine works in pixels, so the
+    /// scale factor is applied on the far side. Safe to call repeatedly, so
+    /// call it whenever the container changes size.
+    @objc public func syncEngineSurfaceSize() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let size = self.view().bounds.size
+            guard size.width > 0, size.height > 0 else { return }
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgeResizeView(bridge: bridge, size: size)
+            }
+        }
     }
 
     public override func attachEngine() {
@@ -265,6 +292,16 @@ public class UnrealEngineController: GameEngineController {
         return shared(bridgeClass, selector)
     }
     
+    private func callBridgeResizeView(bridge: AnyObject, size: CGSize) {
+        let selector = NSSelectorFromString("resizeViewTo:")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias ResizeFunc = @convention(c) (AnyObject, Selector, CGSize) -> Void
+        let resize = unsafeBitCast(method, to: ResizeFunc.self)
+        resize(bridge, selector, size)
+    }
+
     private func callBridgeCreate(bridge: AnyObject, config: [String: Any]) -> Bool {
         let selector = NSSelectorFromString("createWithConfig:controller:")
         guard bridge.responds(to: selector) else { return false }
