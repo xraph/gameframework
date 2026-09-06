@@ -64,6 +64,9 @@ private:
 	/** Log what the renderer is doing, so a letterbox can be traced to a cause. */
 	void ReportRenderState() const;
 
+	/** Tell Flutter where the camera is, when the viewer has moved it. */
+	void ReportCameraIfMoved();
+
 	UPROPERTY(Transient)
 	ACameraActor* Camera = nullptr;
 
@@ -78,6 +81,12 @@ private:
 
 	/** Throttles the render state report to once a second. */
 	float ReportSeconds = 0.0f;
+
+	/** Throttles camera updates, and what was last sent, so a still camera is silent. */
+	float CameraReportCooldown = 0.0f;
+	float LastSentDistance = -1.0f;
+	float LastSentYaw = 0.0f;
+	float LastSentPitch = 0.0f;
 
 	/** Where the camera sits, in orbit terms. Yaw and pitch are degrees. */
 	float OrbitYaw = 0.0f;

@@ -527,6 +527,49 @@ void AFlutterDemoScene::UpdateOrbitFromTouch(float DeltaSeconds)
 	}
 }
 
+void AFlutterDemoScene::ReportCameraIfMoved()
+{
+	// Only once the viewer has taken the camera over. Until then it drifts on
+	// its own, and drift crosses any sensible threshold several times a second,
+	// so reporting it means a steady stream of messages about a camera nobody
+	// is touching.
+	if (!bViewerHasTakenOver)
+	{
+		return;
+	}
+
+	// Then only when it actually moved, and no faster than the throttle. A
+	// message every frame of a drag would flood the channel and the HUD with
+	// values nobody can read.
+	const bool bMoved =
+		!FMath::IsNearlyEqual(OrbitDistance, LastSentDistance, 1.0f) ||
+		!FMath::IsNearlyEqual(OrbitYaw, LastSentYaw, 0.5f) ||
+		!FMath::IsNearlyEqual(OrbitPitch, LastSentPitch, 0.5f);
+
+	if (!bMoved || CameraReportCooldown > 0.0f)
+	{
+		return;
+	}
+
+	LastSentDistance = OrbitDistance;
+	LastSentYaw = OrbitYaw;
+	LastSentPitch = OrbitPitch;
+	CameraReportCooldown = 0.1f;
+
+	// Zoom as a fraction of the range, which is what a host actually wants:
+	// 0 is as close as the camera goes, 1 as far. The raw distance goes too,
+	// for anything that needs the real units.
+	const float Zoom = FMath::GetRangePct(MinDistance, MaxDistance, OrbitDistance);
+
+	if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+	{
+		Bridge->SendToFlutter(TEXT("Camera"), TEXT("moved"),
+			FString::Printf(
+				TEXT("{\"zoom\":%.3f,\"distance\":%.0f,\"yaw\":%.1f,\"pitch\":%.1f}"),
+				Zoom, OrbitDistance, OrbitYaw, OrbitPitch));
+	}
+}
+
 void AFlutterDemoScene::ReportRenderState() const
 {
 	FString CameraState = TEXT("no camera");
@@ -586,6 +629,9 @@ void AFlutterDemoScene::Tick(float DeltaSeconds)
 	}
 
 	UpdateOrbitFromTouch(DeltaSeconds);
+
+	CameraReportCooldown = FMath::Max(0.0f, CameraReportCooldown - DeltaSeconds);
+	ReportCameraIfMoved();
 
 	SceneTime += DeltaSeconds;
 

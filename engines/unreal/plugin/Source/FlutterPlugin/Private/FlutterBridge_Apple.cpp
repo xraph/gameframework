@@ -538,10 +538,24 @@ int32_t UnrealBridge_Tick(float DeltaSeconds)
 	}
 
 
-	// TickGameThread must run on the thread that owns the engine. In an
-	// embedded build that is whichever thread the host drives it from, so this
-	// deliberately does not marshal: doing so would tick from somewhere the
-	// engine does not expect.
+	// Only drain the queue when this really is the game thread.
+	//
+	// TickGameThread runs queued work on whoever calls it, and the host drives
+	// this from a display link on the main thread. Draining there means every
+	// message from Flutter runs on the wrong thread, which mostly appears to
+	// work: setting a float on an actor is harmless. Touching anything the
+	// renderer owns is not, and a material parameter aborts the process inside
+	// a check that the caller is the game thread.
+	//
+	// The engine already drains this queue from its own core ticker, on the
+	// real game thread, so the right answer here is to leave it alone. The call
+	// stays for a host that genuinely drives the engine from its own thread,
+	// which is the other embedded arrangement this ABI supports.
+	if (!IsInGameThread())
+	{
+		return 0;
+	}
+
 	return FEmbeddedCommunication::TickGameThread(DeltaSeconds) ? 1 : 0;
 }
 
