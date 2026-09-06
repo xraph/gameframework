@@ -36,6 +36,30 @@ target 'Runner' do
 end
 
 post_install do |installer|
+  # >>> gameframework: unreal content >>>
+  installer.aggregate_targets.each do |aggregate|
+    aggregate.user_project.targets.each do |target|
+      next unless target.name == 'Runner'
+      next if target.shell_script_build_phases.any? { |p| p.name == 'Copy Unreal content' }
+
+      phase = target.new_shell_script_build_phase('Copy Unreal content')
+      phase.shell_script = <<~SCRIPT
+        set -e
+        CONTENT="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/gameframework_unreal.framework"
+        DEST="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+        if [ -d "${CONTENT}/cookeddata" ]; then
+          rsync -a --delete "${CONTENT}/cookeddata" "${DEST}/"
+          for f in uecommandline.txt mute.caf notices.txt; do
+            [ -f "${CONTENT}/${f}" ] && cp -f "${CONTENT}/${f}" "${DEST}/"
+          done
+        else
+          echo "warning: no Unreal cooked content; run 'game sync unreal -p ios'"
+        fi
+      SCRIPT
+    end
+    aggregate.user_project.save
+  end
+  # <<< gameframework: unreal content <<<
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
