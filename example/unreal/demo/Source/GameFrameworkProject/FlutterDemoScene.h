@@ -30,7 +30,19 @@ public:
 	AFlutterDemoScene();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void Tick(float DeltaSeconds) override;
+
+	/**
+	 * Every message from Flutter, whatever it was addressed to.
+	 *
+	 * Bound to the bridge rather than registered with the router under a name,
+	 * which is the point: this scene never tells Flutter what it is called and
+	 * still sees everything. Handles messages for targets no actor registered,
+	 * which the router alone would drop.
+	 */
+	UFUNCTION()
+	void OnAnyFlutterMessage(const FString& Target, const FString& Method, const FString& Data);
 
 	/** The hero cube, which is what Flutter talks to. */
 	UPROPERTY(Transient)

@@ -422,9 +422,53 @@ void AFlutterDemoScene::BeginPlay()
 	BuildCamera();
 	TakeOverTheView();
 
+	// Take everything from Flutter, without registering a name for this actor.
+	// The cube is reached through the router because it has a name; this is the
+	// other way, and the two do not compete: the router runs first and this
+	// still sees the message afterwards.
+	if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+	{
+		Bridge->OnAnyMessageFromFlutter.AddDynamic(this, &AFlutterDemoScene::OnAnyFlutterMessage);
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[FlutterDemoScene] Scene built: %d orbiters, cube %s"),
 		Orbiters.Num(), HeroCube ? TEXT("yes") : TEXT("no"));
 
+}
+
+void AFlutterDemoScene::EndPlay(const EEndPlayReason::Type Reason)
+{
+	if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+	{
+		Bridge->OnAnyMessageFromFlutter.RemoveDynamic(this, &AFlutterDemoScene::OnAnyFlutterMessage);
+	}
+
+	Super::EndPlay(Reason);
+}
+
+void AFlutterDemoScene::OnAnyFlutterMessage(const FString& Target, const FString& Method,
+	const FString& Data)
+{
+	// Answer so the host can see this fired, and for which message. Sent back
+	// under a name of our choosing; nothing had to be registered to receive.
+	if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+	{
+		Bridge->SendToFlutter(TEXT("Scene"), TEXT("saw"),
+			FString::Printf(TEXT("%s.%s"), *Target, *Method));
+	}
+
+	// A scene-level command, addressed to whatever you like. No actor is
+	// registered under any of it, so the router drops it and this still runs.
+	if (Method == TEXT("resetCamera"))
+	{
+		OrbitYaw = 0.0f;
+		OrbitPitch = -14.0f;
+		OrbitDistance = 640.0f;
+		bViewerHasTakenOver = true;
+		PositionCamera();
+
+		UE_LOG(LogTemp, Log, TEXT("[FlutterDemoScene] Camera reset, asked for by %s"), *Target);
+	}
 }
 
 void AFlutterDemoScene::TakeOverTheView()
