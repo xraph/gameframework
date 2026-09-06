@@ -2,6 +2,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 #import "UnrealAppDelegate.h"
 
@@ -202,6 +203,7 @@ static void HandleUnrealBinary(const char* target, const char* method,
 // Defined below, once the UnrealBridge class exists.
 static void BuildViewNowThatEngineIsReady(void);
 static BOOL HasEngineView(void);
+static void LogEngineViewGeometry(NSString* when, UIView* view);
 
 static void UnrealTick(double deltaSeconds) {
     // The engine blocks in PreInit polling for AppDelegate.IOSView, so keep
@@ -250,6 +252,17 @@ static void StartTicking(void) {
     GLastTickTime = 0;
     [GDisplayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     NSLog(@"[UnrealBridge] Ticking the engine from the display link");
+}
+
+/// Begin driving the engine before any widget exists.
+///
+/// The engine blocks during startup waiting to be handed a view, and the tick
+/// is what offers one. Leaving that until a GameWidget appears deadlocks: the
+/// widget's engine call runs in a post-frame callback, and Flutter cannot
+/// produce that frame while the engine is still blocking. So whoever starts the
+/// engine has to start the tick with it.
+extern "C" void UnrealBridgeBeginDrivingEngine(void) {
+    StartTicking();
 }
 
 static void StopTicking(void) {
@@ -400,6 +413,7 @@ static void StopTicking(void) {
     if (!resize) return;
     _requestedViewSize = size;
     resize((float)size.width, (float)size.height, (float)UIScreen.mainScreen.scale);
+    LogEngineViewGeometry(@"resized", self.engineView);
 }
 
 - (BOOL)isViewReady {
@@ -435,6 +449,7 @@ static void StopTicking(void) {
         return;
     }
     send(target.UTF8String, method.UTF8String, data.UTF8String ?: "");
+    NSLog(@"[UnrealBridge] handed %@.%@ to the framework", target, method);
 }
 
 - (void)sendBinaryWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data {
@@ -503,6 +518,36 @@ static void StopTicking(void) {
 // MARK: - Deferred view creation
 // ============================================================
 
+/// Report what the engine's view actually is on screen.
+///
+/// A scene that renders as a band across the middle can be either of two very
+/// different things: a correctly sized view holding a letterboxed frame, or a
+/// view that is itself only that tall. The numbers tell you which, and nothing
+/// else does.
+static void LogEngineViewGeometry(NSString* when, UIView* view) {
+    if (view == nil) {
+        NSLog(@"[UnrealBridge] geometry (%@): no view", when);
+        return;
+    }
+
+    // Built rather than CGSizeZero, which is a linked constant and would drag
+    // CoreGraphics into every target that includes this file.
+    CGSize drawable = CGSizeMake(0.0, 0.0);
+    if ([view.layer isKindOfClass:[CAMetalLayer class]]) {
+        drawable = ((CAMetalLayer*)view.layer).drawableSize;
+    }
+
+    NSLog(@"[UnrealBridge] geometry (%@): frame=%@ bounds=%@ superview=%@ "
+          @"layer=%@ drawable=%@ scale=%.1f",
+          when,
+          NSStringFromCGRect(view.frame),
+          NSStringFromCGRect(view.bounds),
+          view.superview ? NSStringFromCGRect(view.superview.bounds) : @"none",
+          NSStringFromCGRect(view.layer.frame),
+          NSStringFromCGSize(drawable),
+          view.contentScaleFactor);
+}
+
 static BOOL HasEngineView(void) {
     return UnrealBridge.shared.engineView != nil;
 }
@@ -532,6 +577,7 @@ static void BuildViewNowThatEngineIsReady(void) {
     UIView* view = (__bridge UIView*)handle;
     bridge.engineView = view;
     NSLog(@"[UnrealBridge] Render view built at %@", NSStringFromCGSize(size));
+    LogEngineViewGeometry(@"built", view);
 
     id controller = GUnrealEngineController;
     SEL selector = NSSelectorFromString(@"onUnrealViewReadyWithView:");
@@ -544,7 +590,10 @@ static void BuildViewNowThatEngineIsReady(void) {
         [inv setArgument:&arg atIndex:2];
         [inv invoke];
     } else {
-        NSLog(@"[UnrealBridge] Controller has no onUnrealViewReady handler; "
-              @"the view exists but nothing will show it");
+        // Expected when the engine starts at launch: the view is ready before
+        // any GameWidget exists. The controller collects it from getView when
+        // it does turn up.
+        NSLog(@"[UnrealBridge] Render view built before a controller existed; "
+              @"it will be collected when one attaches");
     }
 }

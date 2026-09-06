@@ -288,3 +288,9 @@ app.*.symbols
 
 # Keep empty directories with .gitkeep
 !**/.gitkeep
+
+# Unreal export outputs. Cooked content is large and rebuilt by
+# "game export unreal", so it does not belong in the repository.
+engines/unreal/dart/ios/UnrealContent/
+engines/unreal/dart/macos/UnrealContent/
+example/unreal/demo_exports/

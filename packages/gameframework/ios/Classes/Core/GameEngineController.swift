@@ -196,6 +196,12 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     // MARK: - Method Channel Handler
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        // Every call from Dart, named. This is the boundary that tells you
+        // whether a control that "does nothing" never left Dart or was dropped
+        // on this side, and there is no other way to see it: Dart's own stdout
+        // does not reach the device console.
+        NSLog("GameEngineController: <- \(call.method)")
+
         switch call.method {
         case "engine#create":
             createEngine()

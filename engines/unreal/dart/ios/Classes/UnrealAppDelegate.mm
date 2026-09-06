@@ -15,6 +15,43 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
+#include <dlfcn.h>
+
+/// Defined in UnrealBridge.mm.
+extern "C" void UnrealBridgeBeginDrivingEngine(void);
+#import <objc/message.h>
+
+extern "C" BOOL UnrealStartEngineAtLaunch(void) {
+    if (!UnrealAssertAppDelegateUsable()) {
+        return NO;
+    }
+
+    // Resolved at runtime rather than linked, so the pod still builds for
+    // projects with no engine. Same reason the rest of the bridge does it.
+    typedef int32_t (*StartEngineFn)(void);
+    StartEngineFn startEngine =
+        (StartEngineFn)dlsym(RTLD_DEFAULT, "UnrealBridge_StartEngine");
+    if (startEngine == NULL) {
+        NSLog(@"[UnrealAppDelegate] UnrealFramework has no UnrealBridge_StartEngine, "
+              @"so it was built without the Flutter plugin. Add it under "
+              @"Plugins/FlutterPlugin and package again.");
+        return NO;
+    }
+
+    const int32_t started = startEngine();
+    NSLog(@"[UnrealAppDelegate] Engine start at launch -> %d", started);
+    if (started == 0) {
+        return NO;
+    }
+
+    // The engine is now blocking until it is handed a view, and the tick is
+    // what offers one. It has to start here rather than when a GameWidget
+    // appears, because that widget's engine call runs in a post-frame callback
+    // and Flutter cannot produce that frame while the engine is blocked.
+    UnrealBridgeBeginDrivingEngine();
+    return YES;
+}
+
 extern "C" NSString* UnrealAppDelegateProblem(Class engineDelegateClass, id appDelegate) {
     if (engineDelegateClass == nil) {
         return @"IOSAppDelegate is missing, so UnrealFramework is not loaded. "

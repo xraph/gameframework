@@ -8,6 +8,7 @@
 #include "Async/Async.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Misc/CoreDelegates.h"
+#include "Misc/ConfigCacheIni.h"
 
 #include <atomic>
 
@@ -341,6 +342,9 @@ void UnrealBridge_SendToUnreal(const char* Target, const char* Method, const cha
 				TEXT("[FlutterBridge_Apple] Dropping message from Flutter, no bridge actor: Target=%s, Method=%s"),
 				*TargetString, *MethodString);
 		}
+
+		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Apple] Routed %s.%s"),
+			*TargetString, *MethodString);
 	});
 }
 
@@ -511,6 +515,18 @@ void UnrealBridge_Init(void)
 
 int32_t UnrealBridge_Tick(float DeltaSeconds)
 {
+	// GConfig is null until the engine has loaded its inis, and
+	// FEmbeddedCommunication::TickGameThread reads a setting through it without
+	// checking. A host that starts ticking as soon as the engine is asked to
+	// start gets there first and dereferences null, which it must, because the
+	// engine blocks during startup waiting to be handed a view and the tick is
+	// what offers one.
+	if (GConfig == nullptr)
+	{
+		return 0;
+	}
+
+
 	// TickGameThread must run on the thread that owns the engine. In an
 	// embedded build that is whichever thread the host drives it from, so this
 	// deliberately does not marshal: doing so would tick from somewhere the

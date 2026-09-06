@@ -1,6 +1,13 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "FlutterBridge.h"
+#include "UnrealEngine.h"
+#include "Engine/Engine.h"
+#include "Containers/Ticker.h"
+#include "Engine/GameViewportClient.h"
+#include "Slate/SceneViewport.h"
+
+#include <atomic>
 
 #if PLATFORM_IOS
 
@@ -52,6 +59,83 @@ static bool GEngineStartRequested = false;
 
 /// Apply the size Unreal should render at.
 ///
+/// The size the host wants, in pixels, and the size the engine was last told
+/// about.
+static std::atomic<int32> GDesiredPixelWidth{0};
+static std::atomic<int32> GDesiredPixelHeight{0};
+static int32 GAppliedPixelWidth = 0;
+static int32 GAppliedPixelHeight = 0;
+static FTSTicker::FDelegateHandle GResolutionTicker;
+
+/// Make the engine's render target match the view it renders into.
+///
+/// The engine creates its viewport before the host's view exists, at a default
+/// 1280x720, and nothing in an embedded build ever corrects it. It then renders
+/// that 16:9 frame into a correctly sized portrait surface, which looks like the
+/// scene has been cropped into a band rather than like a render target that is
+/// the wrong shape.
+///
+/// Resizing the scene viewport is what actually moves it. Asking for a
+/// resolution change instead does not: the console manager refuses the r.SetRes
+/// write on priority grounds and says so in the log, and calling it off the game
+/// thread aborts the process inside the CVar change.
+///
+/// Compares against the viewport's real size every tick rather than remembering
+/// what it last asked for, so it corrects itself if the engine resizes back, and
+/// a rotation puts itself right. In the steady state it is one comparison.
+static bool ApplyPendingResolution(float)
+{
+	const int32 Width = GDesiredPixelWidth.load(std::memory_order_acquire);
+	const int32 Height = GDesiredPixelHeight.load(std::memory_order_acquire);
+	if (Width <= 0 || Height <= 0)
+	{
+		return true;
+	}
+
+	if (GEngine == nullptr || GEngine->GameViewport == nullptr)
+	{
+		return true;
+	}
+
+	FSceneViewport* Viewport = GEngine->GameViewport->GetGameViewport();
+	if (Viewport == nullptr)
+	{
+		return true;
+	}
+
+	const FIntPoint Current = Viewport->GetSizeXY();
+	if (Current.X == Width && Current.Y == Height)
+	{
+		return true;
+	}
+
+	Viewport->ResizeFrame((uint32)Width, (uint32)Height, EWindowMode::Fullscreen);
+
+	UE_LOG(LogTemp, Log, TEXT("[FlutterView_IOS] Render target was %dx%d, resized to %dx%d"),
+		Current.X, Current.Y, Width, Height);
+
+	return true;
+}
+
+/// Record the size the host wants. Applied later, on the game thread.
+static void RequestPixelSize(int32 PixelWidth, int32 PixelHeight)
+{
+	if (PixelWidth <= 0 || PixelHeight <= 0)
+	{
+		return;
+	}
+
+	GDesiredPixelWidth.store(PixelWidth, std::memory_order_release);
+	GDesiredPixelHeight.store(PixelHeight, std::memory_order_release);
+
+	if (!GResolutionTicker.IsValid())
+	{
+		GResolutionTicker = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateStatic(&ApplyPendingResolution), 0.0f);
+	}
+}
+
+/// The engine works in pixels while the host talks in points, so the scale
 /// The engine works in pixels while the host talks in points, so the scale
 /// factor has to be applied here or the engine renders at the wrong resolution
 /// on every device with a retina display, which is all of them.
@@ -69,11 +153,19 @@ static void ApplyViewSize(FIOSView* View, float Width, float Height, float Scale
 	View.ViewSize = CGSizeMake((CGFloat)Width * EffectiveScale,
 		(CGFloat)Height * EffectiveScale);
 
-	[View CalculateContentScaleFactor:(int)(Width * EffectiveScale)
-						 ScreenHeight:(int)(Height * EffectiveScale)];
+	const int32 PixelWidth = (int32)(Width * EffectiveScale);
+	const int32 PixelHeight = (int32)(Height * EffectiveScale);
 
-	[View UpdateRenderWidth:(unsigned int)(Width * EffectiveScale)
-				  andHeight:(unsigned int)(Height * EffectiveScale)];
+	[View CalculateContentScaleFactor:PixelWidth ScreenHeight:PixelHeight];
+	[View UpdateRenderWidth:(unsigned int)PixelWidth andHeight:(unsigned int)PixelHeight];
+
+	// Sizing the view is not enough. The engine keeps its own idea of the
+	// resolution, and in an embedded build nothing tells it ours, so it stays
+	// on the default 1280x720. That is landscape, and rendering it into a
+	// portrait view is what crops the scene into a band across the middle.
+	// Recorded, not applied. Changing the resolution has to happen on the game
+	// thread, and this runs on the main one.
+	RequestPixelSize(PixelWidth, PixelHeight);
 }
 
 extern "C" {

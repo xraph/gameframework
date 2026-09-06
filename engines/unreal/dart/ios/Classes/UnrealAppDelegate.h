@@ -100,6 +100,20 @@ NSString* _Nullable UnrealAppDelegateProblem(Class _Nullable engineDelegateClass
 /// legitimately has no window on the app delegate.
 NSString* _Nullable UnrealAppDelegateWindowWarning(id _Nullable appDelegate);
 
+/// Start Unreal. Call this from your app delegate's
+/// application:didFinishLaunchingWithOptions:, after calling super.
+///
+/// This cannot wait until a GameWidget appears. Unreal's own
+/// -handleDidBecomeActive reads the command line, and in a non-shipping build
+/// that is Fatal if nothing has set it yet. Starting the engine is what sets
+/// it, so an app that becomes active before showing a GameWidget dies on launch
+/// with a stack that points at UIKit rather than at anything you wrote.
+///
+/// Safe to call more than once; the engine only starts the first time. Returns
+/// NO when the framework is absent or the delegate is unusable, having already
+/// logged why.
+BOOL UnrealStartEngineAtLaunch(void);
+
 /// Check that the delegate UnrealAppDelegate.h describes matches the one that
 /// shipped, and that the running app is actually using it.
 ///

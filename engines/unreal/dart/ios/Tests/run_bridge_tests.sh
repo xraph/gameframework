@@ -70,8 +70,8 @@ echo
 echo "=== App delegate contract ==="
 compile_mm "$HERE/UnrealAppDelegateTests.mm" "$BUILD/delegate.o"
 xcrun --sdk "$SDK" clang++ -target "$TARGET" \
-  "$BUILD/UnrealAppDelegate.o" "$BUILD/delegate.o" \
-  -framework Foundation -framework UIKit -o "$BUILD/delegate"
+  "$BUILD/UnrealAppDelegate.o" "$BUILD/UnrealBridge.o" "$BUILD/delegate.o" \
+  -framework Foundation -framework UIKit -framework QuartzCore -o "$BUILD/delegate"
 xcrun simctl spawn "$UDID" "$BUILD/delegate" 2>&1 | grep -v '^20[0-9][0-9]-'
 
 echo

@@ -32,8 +32,13 @@ to sync your Unity export to your plugin's ios/ directory.
   unity_framework_path = File.join(__dir__, 'UnityFramework.framework')
   if File.exist?(unity_framework_path) || File.symlink?(unity_framework_path)
     s.preserve_paths = 'UnityFramework.framework', 'UnityFramework.framework/Data'
-    # Don't vendor - let the consumer plugin vendor it to avoid conflicts
-    # s.ios.vendored_frameworks = 'UnityFramework.framework'
+
+    # Vendor it when it is sitting right here, which is the case after
+    # "game sync unity -p ios" with no separate game plugin in between. Without
+    # this nothing embeds the framework and the Swift compiler cannot find the
+    # module. A consumer plugin that vendors its own build syncs there instead,
+    # so this stays false for them and there is no duplicate.
+    s.ios.vendored_frameworks = 'UnityFramework.framework'
   end
 
   # Configure framework search paths to find UnityFramework from sibling pods

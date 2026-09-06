@@ -27,6 +27,22 @@ to sync your Unreal export to your plugin's ios/ directory.
   # Reach it from Runner-Bridging-Header.h as:
   #   #import <gameframework_unreal/UnrealAppDelegate.h>
   s.public_header_files = 'Classes/UnrealAppDelegate.h'
+
+  # Cooked content, shipped into the app bundle root.
+  #
+  # Unreal looks for cookeddata and uecommandline.txt next to the executable, so
+  # they cannot live inside the framework. A flat iOS framework must not carry a
+  # Resources directory either: installd refuses the whole app when it finds
+  # one. "game sync unreal -p ios" places these here.
+  unreal_content_path = File.join(__dir__, 'UnrealContent')
+  if File.directory?(unreal_content_path)
+    # Top-level entries, not a glob. A glob matches individual files and
+    # CocoaPods copies each one to the bundle root, which would flatten
+    # cookeddata into loose files. Naming the directory copies it whole.
+    s.resources = Dir.glob(File.join(unreal_content_path, '*')).map do |entry|
+      File.join('UnrealContent', File.basename(entry))
+    end
+  end
   s.dependency 'Flutter'
   s.dependency 'gameframework'
   s.platform = :ios, '15.0'
@@ -40,8 +56,13 @@ to sync your Unreal export to your plugin's ios/ directory.
   unreal_framework_path = File.join(__dir__, 'UnrealFramework.framework')
   if File.exist?(unreal_framework_path) || File.symlink?(unreal_framework_path)
     s.preserve_paths = 'UnrealFramework.framework', 'UnrealFramework.framework/Resources'
-    # Don't vendor - let the consumer plugin vendor it to avoid conflicts
-    # s.ios.vendored_frameworks = 'UnrealFramework.framework'
+
+    # Vendor it when it is sitting right here, which is the case after
+    # "game sync unreal -p ios" with no separate game plugin in between. Without
+    # this nothing embeds the framework, the app launches, and IOSAppDelegate is
+    # missing at runtime. A consumer plugin that vendors its own build syncs
+    # there instead, so this stays false for them and there is no duplicate.
+    s.ios.vendored_frameworks = 'UnrealFramework.framework'
   end
 
   # Configure framework search paths to find UnrealFramework from sibling pods
