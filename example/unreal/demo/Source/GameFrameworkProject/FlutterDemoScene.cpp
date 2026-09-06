@@ -649,6 +649,13 @@ void AFlutterDemoScene::Tick(float DeltaSeconds)
 	if (!bReportedRenderState && HasSizedViewport())
 	{
 		bReportedRenderState = true;
+
+		// Frame it again now the viewport has a size. The first attempt runs
+		// during BeginPlay, when asking for the aspect gives nothing, so the
+		// camera settles on the landscape field of view and the scene starts
+		// tighter than intended. It corrects itself the moment you drag, which
+		// makes it easy to miss.
+		PositionCamera();
 		ReportRenderState();
 	}
 
