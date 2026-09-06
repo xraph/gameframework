@@ -13,6 +13,11 @@ public class UnrealEngineController: GameEngineController {
     // MARK: - Properties
 
     private var unrealView: UIView?
+
+    /// Whether unloadEngine gave the view back. Guards reload, so calling it on
+    /// a running engine does nothing rather than resuming something that was
+    /// never paused.
+    private var isUnloaded = false
     private var unrealReady = false
     
     // Message queue for events before Flutter subscribes
@@ -217,13 +222,55 @@ public class UnrealEngineController: GameEngineController {
         }
     }
     
+    /// Give back everything an idle engine is holding, short of tearing it down.
+    ///
+    /// Unreal cannot be unloaded and started again in one process, so this is
+    /// not a teardown. What it can do is stop: the game pauses, the tick stops,
+    /// and the render view goes away, which is the expensive part. That frees
+    /// the drawable and its buffers, which on a phone is most of what an engine
+    /// costs while you are looking at some other Flutter page.
+    ///
+    /// Reversible. Call reload, or just show the widget again, and the view is
+    /// rebuilt and the engine resumes with the scene as you left it.
     public override func unloadEngine() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
-            // Unreal doesn't support unloading without destroying, pause instead
-            self.pauseEngine()
+            NSLog("UnrealEngineController: Unloading Unreal (pausing, releasing the view)")
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgePause(bridge: bridge)
+                self.callBridgeDestroyView(bridge: bridge)
+            }
+
+            self.removeEngineView()
+            self.unrealView = nil
+            self._isPaused = true
+            self.isUnloaded = true
+
             self.sendEvent(name: "onUnloaded", data: nil)
+        }
+    }
+
+    /// Bring back what unloadEngine gave up.
+    ///
+    /// The engine was never destroyed, so there is nothing to start: the view
+    /// is rebuilt on the next tick and the game unpauses.
+    public override func reloadEngine() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            guard self.isUnloaded else { return }
+
+            NSLog("UnrealEngineController: Reloading Unreal")
+            self.isUnloaded = false
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgeRestoreView(bridge: bridge)
+                self.callBridgeResume(bridge: bridge)
+            }
+
+            self._isPaused = false
+            self.sendEvent(name: "onLoaded", data: nil)
         }
     }
     
@@ -328,6 +375,24 @@ public class UnrealEngineController: GameEngineController {
         bridge.perform(selector)
     }
     
+    private func callBridgeRestoreView(bridge: AnyObject) {
+        let selector = NSSelectorFromString("restoreView")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias RestoreFunc = @convention(c) (AnyObject, Selector) -> Void
+        unsafeBitCast(method, to: RestoreFunc.self)(bridge, selector)
+    }
+
+    private func callBridgeDestroyView(bridge: AnyObject) {
+        let selector = NSSelectorFromString("destroyView")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias DestroyFunc = @convention(c) (AnyObject, Selector) -> Void
+        unsafeBitCast(method, to: DestroyFunc.self)(bridge, selector)
+    }
+
     private func callBridgeResume(bridge: AnyObject) {
         let selector = NSSelectorFromString("resume")
         guard bridge.responds(to: selector) else { return }

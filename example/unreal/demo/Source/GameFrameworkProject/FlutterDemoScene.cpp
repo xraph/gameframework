@@ -14,6 +14,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
 #include "Engine/ExponentialHeightFog.h"
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMesh.h"
@@ -449,12 +450,18 @@ void AFlutterDemoScene::EndPlay(const EEndPlayReason::Type Reason)
 void AFlutterDemoScene::OnAnyFlutterMessage(const FString& Target, const FString& Method,
 	const FString& Data)
 {
-	// Answer so the host can see this fired, and for which message. Sent back
-	// under a name of our choosing; nothing had to be registered to receive.
-	if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+	// Answer so the host can see this fired, and for which message. Behind the
+	// same switch as the bridge's own trace, because echoing every message is
+	// what you want while proving the path works and noise once it does.
+	static IConsoleVariable* TraceVar =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("flutter.TraceMessages"));
+	if (TraceVar != nullptr && TraceVar->GetInt() != 0)
 	{
-		Bridge->SendToFlutter(TEXT("Scene"), TEXT("saw"),
-			FString::Printf(TEXT("%s.%s"), *Target, *Method));
+		if (AFlutterBridge* Bridge = AFlutterBridge::GetInstance(this))
+		{
+			Bridge->SendToFlutter(TEXT("Scene"), TEXT("saw"),
+				FString::Printf(TEXT("%s.%s"), *Target, *Method));
+		}
 	}
 
 	// A scene-level command, addressed to whatever you like. No actor is

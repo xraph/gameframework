@@ -168,6 +168,13 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
         fatalError("unloadEngine() must be overridden")
     }
 
+    /// Undo unloadEngine. Default does nothing, for an engine that cannot.
+    ///
+    /// Not abstract like the rest: unloading is a suggestion an engine may or
+    /// may not be able to act on, so being unable to come back from it is a
+    /// legitimate answer rather than a missing implementation.
+    open func reloadEngine() {}
+
     open func destroyEngine() {
         fatalError("destroyEngine() must be overridden")
     }
@@ -205,6 +212,10 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
         switch call.method {
         case "engine#create":
             createEngine()
+            result(true)
+
+        case "engine#reload":
+            reloadEngine()
             result(true)
 
         case "engine#isReady":

@@ -301,6 +301,26 @@ class UnrealController implements GameEngineController {
   }
 
   @override
+  /// Bring the engine back after [unload].
+  ///
+  /// Unreal is never actually torn down, so there is nothing to start: the
+  /// render view is rebuilt and the game unpauses with the scene as you left
+  /// it. Calling this on an engine that was not unloaded does nothing.
+  Future<void> reload() async {
+    _throwIfDisposed();
+
+    try {
+      await _channel.invokeMethod('engine#reload');
+    } catch (e) {
+      throw EngineCommunicationException(
+        'Failed to reload Unreal: $e',
+        target: 'UnrealController',
+        method: 'reload',
+        engineType: engineType,
+      );
+    }
+  }
+
   Future<void> unload() async {
     _throwIfDisposed();
     _throwIfNotReady();

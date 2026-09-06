@@ -200,6 +200,14 @@ static void HandleUnrealBinary(const char* target, const char* method,
 // Ticking happens on the main thread. That is where the host lives, and where
 // an embedded engine expects to be driven from.
 
+/// Set while the host has unloaded, so the tick stops offering a view.
+///
+/// Without this, releasing the view and returning to the run loop rebuilds it
+/// on the very next frame, because offering one is exactly what the tick is
+/// for. The engine is still running and still wants a view; the host just does
+/// not want to give it one for now.
+static BOOL GViewSuppressed = NO;
+
 // Defined below, once the UnrealBridge class exists.
 static void BuildViewNowThatEngineIsReady(void);
 static BOOL HasEngineView(void);
@@ -210,7 +218,7 @@ static void UnrealTick(double deltaSeconds) {
     // offering one until it takes. This is also the only workable moment: too
     // early and Metal is not up, and the readiness announcement that would
     // otherwise tell us cannot reach a plugin that has not loaded yet.
-    if (!HasEngineView()) {
+    if (!GViewSuppressed && !HasEngineView()) {
         BuildViewNowThatEngineIsReady();
     }
 
@@ -222,6 +230,7 @@ static void UnrealTick(double deltaSeconds) {
 
 /// CADisplayLink already fires on the main run loop, so no hop is needed.
 static CADisplayLink* GDisplayLink = nil;
+
 static CFTimeInterval GLastTickTime = 0;
 
 @interface UnrealTicker : NSObject
@@ -297,6 +306,8 @@ static void StopTicking(void) {
 - (void)pause;
 - (void)resume;
 - (void)quit;
+- (void)destroyView;
+- (void)restoreView;
 - (void)sendMessageWithTarget:(NSString*)target method:(NSString*)method data:(NSString*)data;
 - (void)sendBinaryWithTarget:(NSString*)target method:(NSString*)method data:(NSData*)data;
 - (void)executeConsoleCommand:(NSString*)command;
@@ -429,6 +440,36 @@ static void StopTicking(void) {
 - (void)resume {
     PauseFn pause = UNREAL_FN(PauseFn, "UnrealBridge_Pause");
     if (pause) pause(0);
+}
+
+- (void)destroyView {
+    GViewSuppressed = YES;
+
+    DestroyViewFn destroyView = UNREAL_FN(DestroyViewFn, "UnrealBridge_DestroyView");
+    if (destroyView) destroyView();
+
+    // Dropped here too, so the engine's own reference is the only one left and
+    // the buffers actually go back.
+    self.engineView = nil;
+
+    // Letting the engine idle is the pause's job, not this one. The sleep
+    // counter is matched, and releasing it twice against a single KeepAwake
+    // asserts inside the engine, so only one side may own it. Unload pauses as
+    // well as releasing the view, so it is already covered.
+    NSLog(@"[UnrealBridge] Render view released");
+}
+
+- (void)restoreView {
+    if (!GViewSuppressed) {
+        return;
+    }
+
+    GViewSuppressed = NO;
+
+    // The tick offers a view again from here, the same way it did at startup.
+    // Waking the engine is the resume's job, for the same reason releasing was
+    // the pause's.
+    NSLog(@"[UnrealBridge] Render view will be rebuilt");
 }
 
 - (void)quit {

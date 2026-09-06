@@ -2,6 +2,7 @@
 
 #include "FlutterBridge.h"
 #include "FlutterMessageRouter.h"
+#include "Misc/EmbeddedCommunication.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -510,15 +511,51 @@ void AFlutterBridge::OnLevelLoaded()
 
 void AFlutterBridge::OnEnginePause()
 {
+	// Pausing twice is not harmless. The sleep counter is matched, and
+	// AllowSleep asserts when it is released without a KeepAwake to match, so a
+	// second pause aborts the process rather than doing nothing.
+	if (bIsPaused)
+	{
+		return;
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Engine paused"));
 	bIsPaused = true;
+
+	// Actually pause the game, rather than only recording that somebody asked.
+	// Setting a flag and firing a Blueprint event stops nothing: actors keep
+	// ticking, time keeps advancing, and the only things that appear to pause
+	// are the ones that happened to check the flag themselves.
+	if (UWorld* World = GetWorld())
+	{
+		UGameplayStatics::SetGamePaused(World, true);
+	}
+
+	// And stop driving the engine. A paused game that still renders every frame
+	// costs the same battery as a running one, which rather defeats the point
+	// on a phone.
+	FEmbeddedCommunication::AllowSleep(TEXT("flutter"));
+
 	OnEnginePausedBP();
 }
 
 void AFlutterBridge::OnEngineResume()
 {
+	if (!bIsPaused)
+	{
+		return;
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Engine resumed"));
 	bIsPaused = false;
+
+	FEmbeddedCommunication::KeepAwake(TEXT("flutter"), true);
+
+	if (UWorld* World = GetWorld())
+	{
+		UGameplayStatics::SetGamePaused(World, false);
+	}
+
 	OnEngineResumedBP();
 }
 
