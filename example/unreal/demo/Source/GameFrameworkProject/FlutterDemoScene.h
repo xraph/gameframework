@@ -79,8 +79,8 @@ private:
 	/** Seconds since BeginPlay, which drives the orbit of the shapes. */
 	float SceneTime = 0.0f;
 
-	/** Throttles the render state report to once a second. */
-	float ReportSeconds = 0.0f;
+	/** Whether the one-off render state report has gone out. */
+	bool bReportedRenderState = false;
 
 	/** Throttles camera updates, and what was last sent, so a still camera is silent. */
 	float CameraReportCooldown = 0.0f;

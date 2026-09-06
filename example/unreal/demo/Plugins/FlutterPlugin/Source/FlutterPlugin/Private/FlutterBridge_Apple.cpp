@@ -8,6 +8,7 @@
 #include "Async/Async.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Misc/CoreDelegates.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/ConfigCacheIni.h"
 
 #include <atomic>
@@ -32,6 +33,25 @@
 static std::atomic<AFlutterBridge*> GFlutterBridgeInstance{nullptr};
 
 static std::atomic<UnrealMessageCallback> GMessageCallback{nullptr};
+
+/// Trace every message from Flutter back to Flutter, as Trace.queued and
+/// Trace.drained.
+///
+/// Off by default, because it doubles the message traffic. Worth turning on
+/// when a control appears to do nothing: the engine's log file is buffered and
+/// mostly shows startup, so a message that disappears between the bridge and an
+/// actor otherwise leaves nothing to read. Enable it from the host with
+/// executeConsoleCommand("flutter.TraceMessages 1").
+static TAutoConsoleVariable<int32> CVarTraceMessages(
+	TEXT("flutter.TraceMessages"),
+	0,
+	TEXT("Echo each message from Flutter back as Trace.queued and Trace.drained."),
+	ECVF_Default);
+
+static bool ShouldTraceMessages()
+{
+	return CVarTraceMessages.GetValueOnAnyThread() != 0;
+}
 static std::atomic<UnrealBinaryCallback> GBinaryCallback{nullptr};
 
 /// Cached quality settings, refreshed on the game thread.
@@ -330,21 +350,24 @@ void UnrealBridge_SendToUnreal(const char* Target, const char* Method, const cha
 	const FString MethodString = CStringToFString(Method);
 	const FString DataString = CStringToFString(Data);
 
-	// Traced back to Flutter rather than logged. The engine's log file is
-	// buffered and mostly shows startup, so a message that vanishes between
-	// here and the actor leaves nothing to read. These go through the message
-	// callback directly, which needs no bridge actor, so they still arrive when
-	// the thing being diagnosed is the bridge actor itself.
-	SendToFlutter_Apple(TEXT("Trace"), TEXT("queued"),
-		FString::Printf(TEXT("%s.%s"), *TargetString, *MethodString));
+	// Traced through the message callback rather than the bridge actor, so it
+	// still reports when the thing being diagnosed is the bridge actor itself.
+	if (ShouldTraceMessages())
+	{
+		SendToFlutter_Apple(TEXT("Trace"), TEXT("queued"),
+			FString::Printf(TEXT("%s.%s"), *TargetString, *MethodString));
+	}
 
 	RunOnGameThread([TargetString, MethodString, DataString]()
 	{
 		AFlutterBridge* Bridge = GFlutterBridgeInstance.load(std::memory_order_acquire);
 
-		SendToFlutter_Apple(TEXT("Trace"), TEXT("drained"),
-			FString::Printf(TEXT("%s.%s bridge=%s"), *TargetString, *MethodString,
-				Bridge != nullptr ? TEXT("yes") : TEXT("null")));
+		if (ShouldTraceMessages())
+		{
+			SendToFlutter_Apple(TEXT("Trace"), TEXT("drained"),
+				FString::Printf(TEXT("%s.%s bridge=%s"), *TargetString, *MethodString,
+					Bridge != nullptr ? TEXT("yes") : TEXT("null")));
+		}
 
 		if (Bridge != nullptr)
 		{

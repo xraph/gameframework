@@ -424,6 +424,7 @@ void AFlutterDemoScene::BeginPlay()
 
 	UE_LOG(LogTemp, Log, TEXT("[FlutterDemoScene] Scene built: %d orbiters, cube %s"),
 		Orbiters.Num(), HeroCube ? TEXT("yes") : TEXT("no"));
+
 }
 
 void AFlutterDemoScene::TakeOverTheView()
@@ -628,6 +629,16 @@ void AFlutterDemoScene::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Report once, the first tick after the view is ours. Doing it in BeginPlay
+	// reports zeroes, because the viewport does not exist yet, which is worse
+	// than not reporting at all. Useful for telling a letterbox from a camera
+	// framing problem when someone says the scene looks wrong.
+	if (!bReportedRenderState)
+	{
+		bReportedRenderState = true;
+		ReportRenderState();
+	}
+
 	UpdateOrbitFromTouch(DeltaSeconds);
 
 	CameraReportCooldown = FMath::Max(0.0f, CameraReportCooldown - DeltaSeconds);
@@ -635,15 +646,6 @@ void AFlutterDemoScene::Tick(float DeltaSeconds)
 
 	SceneTime += DeltaSeconds;
 
-	// Report what the renderer is actually doing, once a second. The view and
-	// the Metal surface measure correctly from the host side, so anything that
-	// still letterboxes has to be visible from in here.
-	ReportSeconds += DeltaSeconds;
-	if (ReportSeconds >= 3.0f)
-	{
-		ReportSeconds = 0.0f;
-		ReportRenderState();
-	}
 
 	const int32 Count = Orbiters.Num();
 	for (int32 Index = 0; Index < Count; ++Index)

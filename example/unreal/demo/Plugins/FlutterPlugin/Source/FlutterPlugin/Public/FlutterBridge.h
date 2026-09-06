@@ -13,6 +13,12 @@
  * Handles bidirectional communication, console commands, quality settings,
  * and level loading.
  */
+/**
+ * Every message from Flutter, whatever it was addressed to.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FFlutterAnyMessage,
+	const FString&, Target, const FString&, Method, const FString&, Data);
+
 UCLASS(Blueprintable, BlueprintType)
 class FLUTTERPLUGIN_API AFlutterBridge : public AActor
 {
@@ -55,6 +61,22 @@ public:
 	 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Flutter")
 	void OnMessageFromFlutter(const FString& Target, const FString& Method, const FString& Data);
+
+	/**
+	 * Every message from Flutter, whatever it was addressed to.
+	 *
+	 * The same shape as the Flutter side, where GameWidget's onMessage receives
+	 * everything and decides what to do with it. Bind this when you would
+	 * rather switch on the target yourself than give an actor a name and
+	 * register it, which is most of the time for a single-scene app.
+	 *
+	 * Fires for every message, including ones that a named target also handled,
+	 * so binding it does not take delivery away from anything else.
+	 *
+	 * Assignable from Blueprint, and from C++ with AddDynamic.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Flutter")
+	FFlutterAnyMessage OnAnyMessageFromFlutter;
 
 	// ============================================================
 	// MARK: - Binary Message Communication

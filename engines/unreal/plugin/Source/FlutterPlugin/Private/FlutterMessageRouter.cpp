@@ -194,6 +194,15 @@ bool UFlutterMessageRouter::RouteMessage(const FString& Target, const FString& M
 		return true;
 	}
 
+	// Then a catch-all target, for an actor that registered under "*" to take
+	// everything rather than being given a name of its own.
+	if (TryRouteCached(GetCacheKey(TEXT("*"), Method), Method, Data) ||
+		TryRouteCached(GetCacheKey(TEXT("*"), TEXT("*")), Method, Data))
+	{
+		Statistics.MessagesRouted++;
+		return true;
+	}
+
 	// Check if target is registered but method is not
 	if (Targets.Contains(Target))
 	{

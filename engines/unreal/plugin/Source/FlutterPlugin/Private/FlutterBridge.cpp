@@ -183,6 +183,11 @@ void AFlutterBridge::ReceiveFromFlutter(const FString& Target, const FString& Me
 
 	// Fire Blueprint event
 	OnMessageFromFlutter(Target, Method, Data);
+
+	// And the unified one, which fires for everything regardless of target.
+	// Deliberately after routing, so a named handler still sees the message
+	// first and binding this takes delivery away from nothing.
+	OnAnyMessageFromFlutter.Broadcast(Target, Method, Data);
 }
 
 // ============================================================
