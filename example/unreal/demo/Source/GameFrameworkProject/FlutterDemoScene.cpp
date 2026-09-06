@@ -528,6 +528,18 @@ void AFlutterDemoScene::UpdateOrbitFromTouch(float DeltaSeconds)
 	}
 }
 
+bool AFlutterDemoScene::HasSizedViewport() const
+{
+	if (GEngine == nullptr || GEngine->GameViewport == nullptr)
+	{
+		return false;
+	}
+
+	FVector2D Size = FVector2D::ZeroVector;
+	GEngine->GameViewport->GetViewportSize(Size);
+	return Size.X > 0.0f && Size.Y > 0.0f;
+}
+
 void AFlutterDemoScene::ReportCameraIfMoved()
 {
 	// Only once the viewer has taken the camera over. Until then it drifts on
@@ -629,11 +641,12 @@ void AFlutterDemoScene::Tick(float DeltaSeconds)
 		return;
 	}
 
-	// Report once, the first tick after the view is ours. Doing it in BeginPlay
-	// reports zeroes, because the viewport does not exist yet, which is worse
-	// than not reporting at all. Useful for telling a letterbox from a camera
-	// framing problem when someone says the scene looks wrong.
-	if (!bReportedRenderState)
+	// Report once, and only once there is something real to report. Claiming
+	// the view happens during BeginPlay, well before the viewport exists, so
+	// keying off that still prints zeroes, which is worse than not reporting at
+	// all. Wait for a viewport with a size. Useful for telling a letterbox from
+	// a camera framing problem when someone says the scene looks wrong.
+	if (!bReportedRenderState && HasSizedViewport())
 	{
 		bReportedRenderState = true;
 		ReportRenderState();

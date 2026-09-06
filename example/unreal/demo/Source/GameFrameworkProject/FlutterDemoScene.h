@@ -67,6 +67,9 @@ private:
 	/** Tell Flutter where the camera is, when the viewer has moved it. */
 	void ReportCameraIfMoved();
 
+	/** Whether the viewport exists and has a size worth reporting. */
+	bool HasSizedViewport() const;
+
 	UPROPERTY(Transient)
 	ACameraActor* Camera = nullptr;
 
