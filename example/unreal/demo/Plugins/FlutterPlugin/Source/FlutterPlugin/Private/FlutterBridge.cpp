@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "FlutterBridge.h"
+#include "FlutterMessageRouter.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -158,6 +159,27 @@ void AFlutterBridge::SendToFlutter(const FString& Target, const FString& Method,
 void AFlutterBridge::ReceiveFromFlutter(const FString& Target, const FString& Method, const FString& Data)
 {
 	UE_LOG(LogTemp, Log, TEXT("[FlutterBridge] Received from Flutter: Target=%s, Method=%s"), *Target, *Method);
+
+	// Hand it to the router, which is the half that reaches C++ actors.
+	//
+	// Every AFlutterActor registers itself with the router by name and expects
+	// messages to arrive that way. Firing only the Blueprint event below means a
+	// project without Blueprints receives nothing at all: the message crosses
+	// the channel, reaches the bridge, and stops here, with every log along the
+	// way reporting success.
+	bool bRouted = false;
+	if (UFlutterMessageRouter* Router = UFlutterMessageRouter::Get(this))
+	{
+		bRouted = Router->RouteMessage(Target, Method, Data);
+	}
+
+	if (!bRouted)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FlutterBridge] Nothing is registered for %s, so %s went nowhere. "
+				 "Check GetFlutterTargetName on the actor you meant to reach."),
+			*Target, *Method);
+	}
 
 	// Fire Blueprint event
 	OnMessageFromFlutter(Target, Method, Data);

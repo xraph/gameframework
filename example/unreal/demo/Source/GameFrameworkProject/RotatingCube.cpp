@@ -89,6 +89,12 @@ void ARotatingCube::HandleFlutterMessage_Implementation(const FString& Method, c
 {
     UE_LOG(LogTemp, Log, TEXT("[RotatingCube] Message: %s(%s)"), *Method, *Data);
 
+    // Acknowledge every message straight back to Flutter. The engine's log file
+    // is buffered and only reliably shows startup, so an ack in the HUD is the
+    // one signal that says whether a control reached the actor at all, as
+    // opposed to being dropped somewhere along the route.
+    SendToFlutter(TEXT("gotMessage"), Method);
+
     if (Method == TEXT("setSpeed"))
     {
         float NewSpeed = FCString::Atof(*Data);

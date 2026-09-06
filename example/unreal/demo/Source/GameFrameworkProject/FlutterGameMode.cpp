@@ -3,6 +3,7 @@
 #include "FlutterGameMode.h"
 #include "FlutterBridge.h"
 #include "FlutterMessageRouter.h"
+#include "FlutterDemoScene.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Dom/JsonObject.h"
@@ -16,7 +17,10 @@ AFlutterGameMode::AFlutterGameMode()
 	CurrentScore = 0;
 	CurrentLevel = 1;
 	FlutterTargetName = TEXT("GameMode");
-	bAutoSyncState = true;
+	// Off by default. A heartbeat once a second is useful when you are
+	// debugging the channel and pure noise once it works, and it buries the
+	// messages you actually want to read in any log panel on the Flutter side.
+	bAutoSyncState = false;
 	StateSyncInterval = 1.0f;
 	FlutterBridge = nullptr;
 	MessageRouter = nullptr;
@@ -25,7 +29,36 @@ AFlutterGameMode::AFlutterGameMode()
 void AFlutterGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// The bridge is an actor, and AFlutterBridge::GetInstance only ever looks
+	// for one. With no level of our own there is nothing to have placed it in,
+	// so spawn it here, before anything asks for it. Without this the engine
+	// runs, the scene renders, and every message from Flutter is quietly
+	// dropped.
+	if (UWorld* World = GetWorld())
+	{
+		if (AFlutterBridge::GetInstance(this) == nullptr)
+		{
+			FActorSpawnParameters BridgeParams;
+			BridgeParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			World->SpawnActor<AFlutterBridge>(
+				AFlutterBridge::StaticClass(), FTransform::Identity, BridgeParams);
+			UE_LOG(LogTemp, Log, TEXT("[FlutterGameMode] Spawned the Flutter bridge actor"));
+		}
+	}
+
 	InitializeFlutter();
+
+	// Build the scene in code. A scaffolded project has no level of its own and
+	// boots an engine map, which is empty, so without this you get a correctly
+	// running engine rendering nothing and no way to tell the two apart.
+	if (UWorld* World = GetWorld())
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		DemoScene = World->SpawnActor<AFlutterDemoScene>(
+			AFlutterDemoScene::StaticClass(), FTransform::Identity, Params);
+	}
 }
 
 void AFlutterGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)

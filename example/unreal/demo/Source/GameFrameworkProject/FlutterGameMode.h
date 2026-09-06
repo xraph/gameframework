@@ -10,6 +10,8 @@
 class AFlutterBridge;
 class UFlutterMessageRouter;
 
+class AFlutterDemoScene;
+
 /**
  * Flutter Game Mode - Base GameMode with Flutter integration
  *
@@ -252,6 +254,10 @@ private:
 
 	UPROPERTY()
 	UFlutterMessageRouter* MessageRouter;
+
+	/** The demo scene, spawned in BeginPlay because there is no level to hold it. */
+	UPROPERTY()
+	AFlutterDemoScene* DemoScene = nullptr;
 
 	// State sync timer
 	FTimerHandle StateSyncTimerHandle;
