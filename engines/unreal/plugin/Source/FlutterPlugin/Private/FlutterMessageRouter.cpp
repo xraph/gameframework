@@ -184,6 +184,16 @@ bool UFlutterMessageRouter::RouteMessage(const FString& Target, const FString& M
 		return true;
 	}
 
+	// Then the wildcard, which is what every AFlutterActor registers under.
+	// RegisterMethod(Target, "*", ...) is how an actor says "send me everything",
+	// and looking up only the exact method name means that handler can never be
+	// found. The actor still gets the real method name, so it can dispatch.
+	if (TryRouteCached(GetCacheKey(Target, TEXT("*")), Method, Data))
+	{
+		Statistics.MessagesRouted++;
+		return true;
+	}
+
 	// Check if target is registered but method is not
 	if (Targets.Contains(Target))
 	{
@@ -210,6 +220,13 @@ bool UFlutterMessageRouter::RouteBinaryMessage(const FString& Target, const FStr
 
 	// Try cached delegate first
 	if (TryRouteBinaryCached(CacheKey, Method, Data))
+	{
+		Statistics.MessagesRouted++;
+		return true;
+	}
+
+	// Then the wildcard, for the same reason as the text path above.
+	if (TryRouteBinaryCached(GetCacheKey(Target, TEXT("*")), Method, Data))
 	{
 		Statistics.MessagesRouted++;
 		return true;

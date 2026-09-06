@@ -330,9 +330,23 @@ void UnrealBridge_SendToUnreal(const char* Target, const char* Method, const cha
 	const FString MethodString = CStringToFString(Method);
 	const FString DataString = CStringToFString(Data);
 
+	// Traced back to Flutter rather than logged. The engine's log file is
+	// buffered and mostly shows startup, so a message that vanishes between
+	// here and the actor leaves nothing to read. These go through the message
+	// callback directly, which needs no bridge actor, so they still arrive when
+	// the thing being diagnosed is the bridge actor itself.
+	SendToFlutter_Apple(TEXT("Trace"), TEXT("queued"),
+		FString::Printf(TEXT("%s.%s"), *TargetString, *MethodString));
+
 	RunOnGameThread([TargetString, MethodString, DataString]()
 	{
-		if (AFlutterBridge* Bridge = GFlutterBridgeInstance.load(std::memory_order_acquire))
+		AFlutterBridge* Bridge = GFlutterBridgeInstance.load(std::memory_order_acquire);
+
+		SendToFlutter_Apple(TEXT("Trace"), TEXT("drained"),
+			FString::Printf(TEXT("%s.%s bridge=%s"), *TargetString, *MethodString,
+				Bridge != nullptr ? TEXT("yes") : TEXT("null")));
+
+		if (Bridge != nullptr)
 		{
 			Bridge->ReceiveFromFlutter(TargetString, MethodString, DataString);
 		}
@@ -342,9 +356,6 @@ void UnrealBridge_SendToUnreal(const char* Target, const char* Method, const cha
 				TEXT("[FlutterBridge_Apple] Dropping message from Flutter, no bridge actor: Target=%s, Method=%s"),
 				*TargetString, *MethodString);
 		}
-
-		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Apple] Routed %s.%s"),
-			*TargetString, *MethodString);
 	});
 }
 

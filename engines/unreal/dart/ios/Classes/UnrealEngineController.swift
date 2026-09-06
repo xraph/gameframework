@@ -372,7 +372,7 @@ public class UnrealEngineController: GameEngineController {
             return
         }
         
-        NSLog("UnrealEngineController: Forwarding message to Flutter: \(target).\(method)")
+        NSLog("UnrealEngineController: Forwarding message to Flutter: \(target).\(method) \(data)")
         sendEvent(name: "onMessage", data: [
             "target": target,
             "method": method,
