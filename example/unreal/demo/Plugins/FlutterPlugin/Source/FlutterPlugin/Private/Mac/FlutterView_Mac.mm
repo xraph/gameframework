@@ -81,9 +81,41 @@ int32_t UnrealBridge_StartEngine(void)
 		return 1;
 	}
 
-	// The command line normally comes from argv. There is no argv in a library,
-	// so the engine gets an empty one and reads the rest from its own config.
+	// The command line normally comes from argv, and a library has none. Read
+	// it from uecommandline.txt beside the executable instead, which is the
+	// convention iOS already uses, so a host places the same file on both
+	// platforms and this does not become another thing to know.
+	//
+	// It matters more here than on iOS: a Mac build running uncooked content
+	// finds the project only if -project points at it.
 	GEmbeddedCommandLine = TEXT("");
+
+	NSString* CommandLinePath =
+		[[NSBundle mainBundle] pathForResource:@"uecommandline" ofType:@"txt"];
+	if (CommandLinePath == nil)
+	{
+		// Resources are one place; the bundle root is the other, and that is
+		// where a staged build puts it.
+		CommandLinePath = [[[NSBundle mainBundle] bundlePath]
+			stringByAppendingPathComponent:@"uecommandline.txt"];
+	}
+
+	NSString* Contents = [NSString stringWithContentsOfFile:CommandLinePath
+												  encoding:NSUTF8StringEncoding
+													 error:nil];
+	if (Contents != nil)
+	{
+		GEmbeddedCommandLine = FString(
+			[[Contents stringByTrimmingCharactersInSet:
+				[NSCharacterSet whitespaceAndNewlineCharacterSet]] UTF8String]);
+		UE_LOG(LogTemp, Log, TEXT("[FlutterView_Mac] Command line: %s"), *GEmbeddedCommandLine);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FlutterView_Mac] No uecommandline.txt beside the app, so the engine "
+				 "has no project to open and will not load a level"));
+	}
 
 	// Start the game thread the way LaunchMac does. RunGameThread registers the
 	// calling thread as the main one and puts GuardedMain on a thread of its

@@ -294,3 +294,7 @@ app.*.symbols
 engines/unreal/dart/ios/UnrealContent/
 engines/unreal/dart/macos/UnrealContent/
 example/unreal/demo_exports/
+
+# Content synced into the example app by "game sync unreal", rebuilt on demand.
+example/macos/UnrealContent/
+example/ios/UnrealContent/
