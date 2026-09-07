@@ -135,7 +135,7 @@ public:
 	 * Get the current level
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Flutter|Level")
-	int32 GetLevel() const { return CurrentLevel; }
+	int32 GetCurrentLevel() const { return CurrentLevel; }
 
 	/**
 	 * Load a level by name

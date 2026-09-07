@@ -26,7 +26,7 @@ Game Framework provides a consistent API for integrating game engines into Flutt
 - **Modular Architecture** - Use only the engines you need
 - **Bidirectional Communication** - Flutter ↔ Engine messaging with type safety
 - **Lifecycle Management** - Automatic pause/resume/destroy handling
-- **Multi-Platform** - Android, iOS, macOS, Windows, Linux support
+- **Multi-Platform** - Android, iOS and web today, with macOS in progress
 - **Production Ready** - Comprehensive testing and documentation
 
 ## Monorepo Structure
@@ -260,14 +260,43 @@ Game Engine (Unity/Unreal)
 
 ## Platform Support
 
-| Platform | gameframework | Unity | Unreal | Status |
-|----------|--------------|-------|--------|--------|
-| Android  | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
-| iOS      | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
-| Web      | ✅ Ready     | ✅ Ready | ⏳ Planned | Stable   |
-| macOS    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
-| Windows  | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
-| Linux    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
+| Platform | Unity | Unreal |
+|----------|-------|--------|
+| Android  | Working | Built, not yet run on a device |
+| iOS      | Working | Working, verified on device |
+| Web      | Working | Not started |
+| macOS    | Builds; not run | Starts and reaches Metal, does not render yet |
+| Windows  | Stub | Stub |
+| Linux    | Stub | Stub |
+
+"Stub" means the platform directory holds a CMake file and an empty plugin
+entry point. There is no controller and no platform view, so a `GameWidget`
+there renders nothing. Web is Unity only; Unreal has no web target.
+
+### Unreal on iOS
+
+Working end to end, three commands and no hand editing:
+
+```bash
+game export unreal -p ios && game sync unreal -p ios && flutter build ios
+```
+
+Rendering, touch, messaging both ways, pause, and unload. Needs an engine
+built from source: an installed engine ships its modules prebuilt, so
+`BUILD_EMBEDDED_APP` never reaches them and the framework links, launches and
+never boots an engine.
+
+### Unreal on macOS
+
+Further than the table suggests, and not finished. Unreal has no embedded mode
+for Mac at all, so the target defines `BUILD_EMBEDDED_APP` itself and the
+plugin supplies the startup and view path the engine provides only for iOS.
+The app builds, the framework loads, the engine starts, opens the project and
+initialises Metal. It then stops because nothing has been cooked for Mac and a
+non-editor build cannot compile shaders at runtime.
+
+See `engines/unreal/CONTINUE.md` for what is left and the constraints worth
+knowing before changing any of it.
 
 ## Continuous Integration
 

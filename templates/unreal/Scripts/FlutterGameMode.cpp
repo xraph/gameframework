@@ -3,6 +3,7 @@
 #include "FlutterGameMode.h"
 #include "FlutterBridge.h"
 #include "FlutterMessageRouter.h"
+#include "Engine/World.h"
 #include "TimerManager.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonWriter.h"

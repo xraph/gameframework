@@ -1,0 +1,19 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.3",
+  "Category": "",
+  "Description": "GameFramework - Unreal Project",
+  "Modules": [
+    {
+      "Name": "GameFrameworkProject",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "FlutterPlugin",
+      "Enabled": true
+    }
+  ]
+}

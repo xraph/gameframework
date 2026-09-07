@@ -13,6 +13,11 @@ public class UnrealEngineController: GameEngineController {
     // MARK: - Properties
 
     private var unrealView: UIView?
+
+    /// Whether unloadEngine gave the view back. Guards reload, so calling it on
+    /// a running engine does nothing rather than resuming something that was
+    /// never paused.
+    private var isUnloaded = false
     private var unrealReady = false
     
     // Message queue for events before Flutter subscribes
@@ -70,7 +75,10 @@ public class UnrealEngineController: GameEngineController {
                 self.attachEngine()
                 NSLog("UnrealEngineController: Unreal view attached successfully")
             } else {
-                NSLog("UnrealEngineController: No Unreal view available (stub mode)")
+                // Normal on the first call. The engine announces when its
+                // config is loaded and the bridge builds the view then, which
+                // arrives at onUnrealViewReadyWithView.
+                NSLog("UnrealEngineController: Waiting for the engine's render view")
             }
             
             // Mark as ready
@@ -112,6 +120,54 @@ public class UnrealEngineController: GameEngineController {
         self.flushMessageQueue()
     }
     
+    /**
+     * Called by the bridge once the engine has built its render view.
+     *
+     * The view cannot exist until the engine has read its config, which it
+     * announces rather than doing on a fixed schedule. So createEngine finishes
+     * without a view and this attaches it whenever it arrives, which is usually
+     * a moment later but is not guaranteed to be.
+     *
+     * @objc makes this reachable from the Objective-C bridge.
+     */
+    @objc public func onUnrealViewReadyWithView(_ view: UIView) {
+        NSLog("UnrealEngineController: Unreal render view arrived")
+        self.unrealView = view
+        self.attachEngine()
+
+        // Tell the engine the size it is actually rendering at. The container
+        // resizes the view for us, but the engine works in pixels and will keep
+        // rendering at its startup guess until it is told otherwise.
+        self.syncEngineSurfaceSize()
+        self.sendEvent(name: "onMessage", data: [
+            "target": "Unreal",
+            "method": "onViewReady",
+            "data": "{\"success\":true}"
+        ])
+    }
+
+    public override func engineViewDidResize(to size: CGSize) {
+        syncEngineSurfaceSize()
+    }
+
+    /// Push the current container size down to the engine.
+    ///
+    /// Sizes cross the bridge in points and the engine works in pixels, so the
+    /// scale factor is applied on the far side. Safe to call repeatedly, so
+    /// call it whenever the container changes size.
+    @objc public func syncEngineSurfaceSize() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            let size = self.view().bounds.size
+            guard size.width > 0, size.height > 0 else { return }
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgeResizeView(bridge: bridge, size: size)
+            }
+        }
+    }
+
     public override func attachEngine() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let unrealView = self.unrealView else {
@@ -166,13 +222,55 @@ public class UnrealEngineController: GameEngineController {
         }
     }
     
+    /// Give back everything an idle engine is holding, short of tearing it down.
+    ///
+    /// Unreal cannot be unloaded and started again in one process, so this is
+    /// not a teardown. What it can do is stop: the game pauses, the tick stops,
+    /// and the render view goes away, which is the expensive part. That frees
+    /// the drawable and its buffers, which on a phone is most of what an engine
+    /// costs while you are looking at some other Flutter page.
+    ///
+    /// Reversible. Call reload, or just show the widget again, and the view is
+    /// rebuilt and the engine resumes with the scene as you left it.
     public override func unloadEngine() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
-            // Unreal doesn't support unloading without destroying, pause instead
-            self.pauseEngine()
+            NSLog("UnrealEngineController: Unloading Unreal (pausing, releasing the view)")
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgePause(bridge: bridge)
+                self.callBridgeDestroyView(bridge: bridge)
+            }
+
+            self.removeEngineView()
+            self.unrealView = nil
+            self._isPaused = true
+            self.isUnloaded = true
+
             self.sendEvent(name: "onUnloaded", data: nil)
+        }
+    }
+
+    /// Bring back what unloadEngine gave up.
+    ///
+    /// The engine was never destroyed, so there is nothing to start: the view
+    /// is rebuilt on the next tick and the game unpauses.
+    public override func reloadEngine() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            guard self.isUnloaded else { return }
+
+            NSLog("UnrealEngineController: Reloading Unreal")
+            self.isUnloaded = false
+
+            if let bridge = self.getUnrealBridge() {
+                self.callBridgeRestoreView(bridge: bridge)
+                self.callBridgeResume(bridge: bridge)
+            }
+
+            self._isPaused = false
+            self.sendEvent(name: "onLoaded", data: nil)
         }
     }
     
@@ -241,6 +339,16 @@ public class UnrealEngineController: GameEngineController {
         return shared(bridgeClass, selector)
     }
     
+    private func callBridgeResizeView(bridge: AnyObject, size: CGSize) {
+        let selector = NSSelectorFromString("resizeViewTo:")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias ResizeFunc = @convention(c) (AnyObject, Selector, CGSize) -> Void
+        let resize = unsafeBitCast(method, to: ResizeFunc.self)
+        resize(bridge, selector, size)
+    }
+
     private func callBridgeCreate(bridge: AnyObject, config: [String: Any]) -> Bool {
         let selector = NSSelectorFromString("createWithConfig:controller:")
         guard bridge.responds(to: selector) else { return false }
@@ -267,6 +375,24 @@ public class UnrealEngineController: GameEngineController {
         bridge.perform(selector)
     }
     
+    private func callBridgeRestoreView(bridge: AnyObject) {
+        let selector = NSSelectorFromString("restoreView")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias RestoreFunc = @convention(c) (AnyObject, Selector) -> Void
+        unsafeBitCast(method, to: RestoreFunc.self)(bridge, selector)
+    }
+
+    private func callBridgeDestroyView(bridge: AnyObject) {
+        let selector = NSSelectorFromString("destroyView")
+        guard bridge.responds(to: selector) else { return }
+
+        let method = bridge.method(for: selector)
+        typealias DestroyFunc = @convention(c) (AnyObject, Selector) -> Void
+        unsafeBitCast(method, to: DestroyFunc.self)(bridge, selector)
+    }
+
     private func callBridgeResume(bridge: AnyObject) {
         let selector = NSSelectorFromString("resume")
         guard bridge.responds(to: selector) else { return }
@@ -311,7 +437,7 @@ public class UnrealEngineController: GameEngineController {
             return
         }
         
-        NSLog("UnrealEngineController: Forwarding message to Flutter: \(target).\(method)")
+        NSLog("UnrealEngineController: Forwarding message to Flutter: \(target).\(method) \(data)")
         sendEvent(name: "onMessage", data: [
             "target": target,
             "method": method,

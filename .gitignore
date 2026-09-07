@@ -177,6 +177,13 @@ build/
 # ============================================================================
 # Unreal Engine Integration
 # ============================================================================
+# These need the extra ** because an Unreal project usually sits one level
+# down, as unreal/<ProjectName>/, and plugins nest their own build output again.
+**/unreal/**/Binaries/
+**/unreal/**/Build/
+**/unreal/**/Intermediate/
+**/unreal/**/Saved/
+**/unreal/**/DerivedDataCache/
 **/unreal/Binaries/
 **/unreal/Build/
 **/unreal/Intermediate/
@@ -281,3 +288,13 @@ app.*.symbols
 
 # Keep empty directories with .gitkeep
 !**/.gitkeep
+
+# Unreal export outputs. Cooked content is large and rebuilt by
+# "game export unreal", so it does not belong in the repository.
+engines/unreal/dart/ios/UnrealContent/
+engines/unreal/dart/macos/UnrealContent/
+example/unreal/demo_exports/
+
+# Content synced into the example app by "game sync unreal", rebuilt on demand.
+example/macos/UnrealContent/
+example/ios/UnrealContent/

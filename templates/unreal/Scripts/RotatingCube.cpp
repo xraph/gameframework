@@ -22,7 +22,6 @@ ARotatingCube::ARotatingCube()
     }
 
     // Set default values
-    FlutterTargetName = TEXT("RotatingCube");
     bAutoRegister = true;
 }
 
@@ -80,13 +79,13 @@ void ARotatingCube::Tick(float DeltaTime)
     }
 }
 
-FString ARotatingCube::GetFlutterTargetName() const
+FString ARotatingCube::GetFlutterTargetName_Implementation() const
 {
     // Use a specific name for the rotating cube demo
     return TEXT("GameFrameworkDemo");
 }
 
-void ARotatingCube::OnFlutterMessage_Implementation(const FString& Method, const FString& Data)
+void ARotatingCube::HandleFlutterMessage_Implementation(const FString& Method, const FString& Data)
 {
     UE_LOG(LogTemp, Log, TEXT("[RotatingCube] Message: %s(%s)"), *Method, *Data);
 

@@ -6,12 +6,21 @@ import UIKit
  */
 class GameEngineContainerView: UIView {
     weak var engineView: UIView?
-    
+
+    /// Fires after the engine view has been stretched to match the container.
+    ///
+    /// Engines that render into their own surface have to be told the new size.
+    /// Resizing the UIView alone leaves them drawing at whatever resolution
+    /// they started at, which shows up as a blurry or cropped scene after a
+    /// rotation rather than as an obvious failure.
+    var onEngineViewResized: ((CGSize) -> Void)?
+
     override func layoutSubviews() {
         super.layoutSubviews()
         // Automatically resize engine view to match container bounds
         if let engineView = engineView, !bounds.isEmpty {
             engineView.frame = bounds
+            onEngineViewResized?(bounds.size)
         }
     }
 }
@@ -121,7 +130,17 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
 
         self.channel.setMethodCallHandler(handleMethodCall)
         self.eventChannel.setStreamHandler(self)
+
+        // Weakly, because the controller owns the container.
+        self.containerView.onEngineViewResized = { [weak self] size in
+            self?.engineViewDidResize(to: size)
+        }
     }
+
+    /// Called on the main thread whenever the container has resized the engine
+    /// view. Override it if your engine needs its render surface resized too.
+    /// The default does nothing.
+    open func engineViewDidResize(to size: CGSize) {}
 
     // MARK: - Abstract Methods (Override in subclasses)
 
@@ -148,6 +167,13 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     open func unloadEngine() {
         fatalError("unloadEngine() must be overridden")
     }
+
+    /// Undo unloadEngine. Default does nothing, for an engine that cannot.
+    ///
+    /// Not abstract like the rest: unloading is a suggestion an engine may or
+    /// may not be able to act on, so being unable to come back from it is a
+    /// legitimate answer rather than a missing implementation.
+    open func reloadEngine() {}
 
     open func destroyEngine() {
         fatalError("destroyEngine() must be overridden")
@@ -177,9 +203,19 @@ open class GameEngineController: NSObject, GameEnginePlatformView, FlutterStream
     // MARK: - Method Channel Handler
 
     private func handleMethodCall(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        // Every call from Dart, named. This is the boundary that tells you
+        // whether a control that "does nothing" never left Dart or was dropped
+        // on this side, and there is no other way to see it: Dart's own stdout
+        // does not reach the device console.
+        NSLog("GameEngineController: <- \(call.method)")
+
         switch call.method {
         case "engine#create":
             createEngine()
+            result(true)
+
+        case "engine#reload":
+            reloadEngine()
             result(true)
 
         case "engine#isReady":

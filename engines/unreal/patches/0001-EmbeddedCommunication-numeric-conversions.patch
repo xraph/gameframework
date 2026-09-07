@@ -1,0 +1,49 @@
+diff --git a/Engine/Source/Runtime/Core/Private/Misc/EmbeddedCommunication.cpp b/Engine/Source/Runtime/Core/Private/Misc/EmbeddedCommunication.cpp
+index ab2d3043d..4ab849b85 100644
+--- a/Engine/Source/Runtime/Core/Private/Misc/EmbeddedCommunication.cpp
++++ b/Engine/Source/Runtime/Core/Private/Misc/EmbeddedCommunication.cpp
+@@ -111,11 +111,11 @@ void FEmbeddedCommunication::ForceTick(int ID, float MinTimeSlice, float MaxTime
+ 		FString Override;
+ 		if (FParse::Value(FCommandLine::Get(), TEXT("ForceTickMin="), Override))
+ 		{
+-			OverrideMinTimeSlice = FCString::Atoi(*Override);
++			OverrideMinTimeSlice = FCString::Atof(*Override);
+ 		}
+ 		if (FParse::Value(FCommandLine::Get(), TEXT("ForceTickMax="), Override))
+ 		{
+-			OverrideMaxTimeSlice = FCString::Atoi(*Override);
++			OverrideMaxTimeSlice = FCString::Atof(*Override);
+ 		}
+ 	}
+ 
+@@ -139,10 +139,10 @@ void FEmbeddedCommunication::ForceTick(int ID, float MinTimeSlice, float MaxTime
+ 	{
+ 		UE_LOGF(LogInit, Display, "###ForceTick %d: processing messages...", ID);
+ 		//We have to manually tick everything as we are looping the main thread here
+-		FTSTicker::GetCoreTicker().Tick(Now - LastTime);
++		FTSTicker::GetCoreTicker().Tick((float)(Now - LastTime));
+ 		FThreadManager::Get().Tick();
+ 		
+-		FPlatformProcess::Sleep(DeltaTime);
++		FPlatformProcess::Sleep((float)DeltaTime);
+ 
+ 		// update timer
+ 		LastTime = Now;
+@@ -414,7 +414,7 @@ bool FEmbeddedCommunication::TickGameThread(float DeltaTime)
+ 				if (SleepTimeSeconds > 0.0)
+ 				{
+ 					UE_LOGF(LogInit, VeryVerbose, "FEmbeddedCommunication Sleeping GameThread for %ls seconds...", *FString::SanitizeFloat(SleepTimeSeconds));
+-					const uint32 SleepTimeMilliseconds = 1000 * SleepTimeSeconds;
++					const uint32 SleepTimeMilliseconds = (uint32)(1000.0 * SleepTimeSeconds);
+ 					bWasTriggered = GSleepEvent->Wait(SleepTimeMilliseconds);
+ 					UE_LOGF(LogInit, VeryVerbose, "FEmbeddedCommunication Woke up. Reason=[%ls]", bWasTriggered ? TEXT("Triggered") : TEXT("TimedOut"));
+ 				}
+@@ -425,7 +425,7 @@ bool FEmbeddedCommunication::TickGameThread(float DeltaTime)
+ 		{
+ 			// Sleep for 5 seconds or until triggered
+ 			UE_LOGF(LogInit, VeryVerbose, "FEmbeddedCommunication Sleeping GameThread for %ls seconds...", *FString::SanitizeFloat(IdleSleepTimeSeconds));
+-			const uint32 IdleSleepTimeMilliseconds = 1000 * IdleSleepTimeSeconds;
++			const uint32 IdleSleepTimeMilliseconds = (uint32)(1000.0 * IdleSleepTimeSeconds);
+ 			bool bWasTriggered = GSleepEvent->Wait(IdleSleepTimeMilliseconds);
+ 			UE_LOGF(LogInit, VeryVerbose, "FEmbeddedCommunication Woke up. Reason=[%ls]", bWasTriggered ? TEXT("Triggered") : TEXT("TimedOut"));
+ 		}
