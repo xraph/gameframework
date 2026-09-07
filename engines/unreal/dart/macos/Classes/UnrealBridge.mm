@@ -7,6 +7,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
+#import <objc/message.h>
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 #import "UnrealBridge.h"
@@ -56,6 +57,10 @@ typedef void (*InitFn)(void);
 typedef int32_t (*TickFn)(float);
 typedef void (*KeepAwakeFn)(const char*, int32_t);
 typedef void (*AllowSleepFn)(const char*);
+typedef int32_t (*StartEngineFn)(void);
+typedef void* (*CreateViewFn)(float, float, float);
+typedef void (*ResizeViewFn)(float, float, float);
+typedef void (*DestroyViewFn)(void);
 typedef void (*PauseFn)(int32_t);
 typedef void (*StopFn)(void);
 typedef int32_t (*IsReadyFn)(void);
@@ -89,6 +94,9 @@ static NSArray<NSString*>* UnrealQualityKeys(void) {
 
 // The Swift controller. Held strongly for as long as the bridge is live.
 static id GUnrealEngineController = nil;
+
+/// The size the host last asked for, in points.
+static CGSize GRequestedViewSize = {1280.0, 720.0};
 
 // ============================================================
 // MARK: - Callbacks from Unreal
@@ -197,10 +205,55 @@ static void HandleUnrealBinary(const char* target, const char* method,
 // Ticking happens on the main thread. That is where the host lives, and where
 // an embedded engine expects to be driven from.
 
+/// The engine's view, once it has lent us one, and whether the host wants it.
+///
+/// The engine builds its own window some time after the game thread starts, so
+/// there is nothing to take at first. The tick keeps asking, which is also the
+/// only workable moment: too early and there is no window, and the engine has
+/// no readiness signal a plugin can subscribe to in time.
+static NSView* GEngineView = nil;
+static BOOL GViewSuppressed = NO;
+
+static void OfferViewToController(void);
+
 static void UnrealTick(double deltaSeconds) {
+    if (!GViewSuppressed && GEngineView == nil) {
+        OfferViewToController();
+    }
+
     TickFn tick = UNREAL_FN(TickFn, "UnrealBridge_Tick");
     if (tick) {
         tick((float)deltaSeconds);
+    }
+}
+
+/// Ask the engine for its view, and hand it to the controller once it has one.
+static void OfferViewToController(void) {
+    CreateViewFn createView = UNREAL_FN(CreateViewFn, "UnrealBridge_CreateView");
+    if (!createView) {
+        return;
+    }
+
+    // Points. AppKit scales for the backing store itself, so the size the host
+    // asked for is the size the engine is told about.
+    const CGSize size = GRequestedViewSize;
+    void* handle = createView((float)size.width, (float)size.height, 1.0f);
+    if (!handle) {
+        // Still starting. Asked again next frame.
+        return;
+    }
+
+    GEngineView = (__bridge NSView*)handle;
+    NSLog(@"[UnrealBridge] Render view arrived at %@", NSStringFromSize(size));
+
+    id controller = GUnrealEngineController;
+    SEL selector = NSSelectorFromString(@"onUnrealViewReady:");
+    if ([controller respondsToSelector:selector]) {
+        ((void (*)(id, SEL, NSView*))objc_msgSend)(controller, selector, GEngineView);
+    } else {
+        // Expected when the engine starts before any widget exists. The
+        // controller collects it from getView when one turns up.
+        NSLog(@"[UnrealBridge] Render view arrived before a controller existed");
     }
 }
 
@@ -336,6 +389,21 @@ static void StopTicking(void) {
               @"Place one in your level if messages never arrive.");
     }
 
+    // Start the engine. Nothing renders until this runs: on macOS it puts
+    // GuardedMain on a game thread, which is what LaunchMac would have done if
+    // this were an app rather than a library.
+    //
+    // Unlike iOS this can wait until a widget exists. There is no app delegate
+    // reading the command line the moment the app becomes active, so nothing
+    // demands the engine be up before then.
+    StartEngineFn startEngine = UNREAL_FN(StartEngineFn, "UnrealBridge_StartEngine");
+    if (startEngine) {
+        NSLog(@"[UnrealBridge] StartEngine -> %d", startEngine());
+    }
+
+    KeepAwakeFn keepAwake = UNREAL_FN(KeepAwakeFn, "UnrealBridge_KeepAwake");
+    if (keepAwake) keepAwake("flutter", 1);
+
     InitFn initEngine = UNREAL_FN(InitFn, "UnrealBridge_Init");
     if (initEngine) initEngine();
 
@@ -346,8 +414,38 @@ static void StopTicking(void) {
 }
 
 - (NSView*)getView {
-    // Unreal owns its own window on macOS; there is no subview to hand back.
-    return nil;
+    return GEngineView;
+}
+
+- (void)resizeViewTo:(CGSize)size {
+    if (size.width <= 0.0 || size.height <= 0.0) {
+        return;
+    }
+
+    GRequestedViewSize = size;
+
+    ResizeViewFn resize = UNREAL_FN(ResizeViewFn, "UnrealBridge_ResizeView");
+    if (resize) resize((float)size.width, (float)size.height, 1.0f);
+}
+
+- (void)destroyView {
+    GViewSuppressed = YES;
+
+    DestroyViewFn destroyView = UNREAL_FN(DestroyViewFn, "UnrealBridge_DestroyView");
+    if (destroyView) destroyView();
+
+    GEngineView = nil;
+    NSLog(@"[UnrealBridge] Render view released");
+}
+
+- (void)restoreView {
+    if (!GViewSuppressed) {
+        return;
+    }
+
+    // The tick offers a view again from here, the same way it did at startup.
+    GViewSuppressed = NO;
+    NSLog(@"[UnrealBridge] Render view will be rebuilt");
 }
 
 - (void)pause {

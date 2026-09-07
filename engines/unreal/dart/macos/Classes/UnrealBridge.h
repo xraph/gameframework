@@ -33,6 +33,15 @@ NS_ASSUME_NONNULL_BEGIN
 /// on the interface because the controller's view plumbing expects it.
 - (nullable NSView *)getView;
 
+/// Tell the engine the size it is rendering at, in points.
+- (void)resizeViewTo:(CGSize)size NS_SWIFT_NAME(resizeView(to:));
+
+/// Give the engine's view back, freeing what it holds. Reversible.
+- (void)destroyView;
+
+/// Take a view again after destroyView.
+- (void)restoreView;
+
 - (void)pause;
 - (void)resume;
 - (void)quit;
