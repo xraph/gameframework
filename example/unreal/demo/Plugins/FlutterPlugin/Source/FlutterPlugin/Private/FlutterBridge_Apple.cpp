@@ -489,32 +489,8 @@ int32_t UnrealBridge_GetQualitySettings(int32_t* OutValues, int32_t Capacity)
 	return UNREALBRIDGE_QUALITY_VALUE_COUNT;
 }
 
-#if PLATFORM_MAC
-
-// macOS has no embedded render path. bShouldCompileAsDLL does not define
-// BUILD_EMBEDDED_APP there and no Mac runtime code honours it, so there is no
-// engine-owned view to hand over. These exist so the ABI is the same shape on
-// both platforms and a host can call them unconditionally.
-
-void* UnrealBridge_CreateView(float, float, float)
-{
-	UE_LOG(LogTemp, Warning,
-		TEXT("[FlutterBridge_Apple] Unreal has no embedded render view on macOS"));
-	return nullptr;
-}
-
-int32_t UnrealBridge_StartEngine(void)
-{
-	UE_LOG(LogTemp, Warning,
-		TEXT("[FlutterBridge_Apple] Unreal has no embedded start path on macOS"));
-	return 0;
-}
-
-void UnrealBridge_ResizeView(float, float, float) {}
-void UnrealBridge_DestroyView(void) {}
-int32_t UnrealBridge_IsViewReady(void) { return 0; }
-
-#endif // PLATFORM_MAC
+// The macOS view and engine startup live in Mac/FlutterView_Mac.mm, the same
+// way the iOS ones live in IOS/FlutterView_IOS.mm.
 
 void UnrealBridge_SetEngineReadyCallback(UnrealEngineReadyCallback Callback)
 {

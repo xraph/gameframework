@@ -40,6 +40,22 @@ public class GameFrameworkProjectTarget : TargetRules
         {
             LinkType = TargetLinkType.Monolithic;
             bShouldCompileAsDLL = true;
+
+            // Turn on the embedded path for Mac, which the engine never does
+            // itself. UEBuildIOS adds BUILD_EMBEDDED_APP for iOS and nothing in
+            // UnrealBuildTool adds it anywhere else, so on Mac every body in
+            // EmbeddedCommunication.cpp compiles away: RunOnGameThread drops
+            // the lambda, TickGameThread does nothing, and a host talking to
+            // the engine is talking to no-ops.
+            //
+            // It has to reach the engine's own modules, not just this project.
+            // FEmbeddedCommunication lives in Core, so a definition that stops
+            // at the project changes nothing at all, and a unique build
+            // environment is what makes the engine rebuild with it. A source
+            // engine allows that; an installed one refuses, which is the same
+            // constraint embedding has on iOS.
+            BuildEnvironment = TargetBuildEnvironment.Unique;
+            GlobalDefinitions.Add("BUILD_EMBEDDED_APP=1");
         }
 
         if (Target.Platform == UnrealTargetPlatform.IOS)
