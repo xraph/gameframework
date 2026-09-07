@@ -66,10 +66,20 @@ Not run on a device in this session, so treat it as built but unverified.
   must carry `Versions/A/Resources/Info.plist`. These are opposite rules and
   both are enforced by tooling that blames something else.
 
-## Known broken, and not mine
+## Unity's macOS controller
 
-`engines/unity/dart/macos/Classes/UnityEngineController.swift` does not
-compile: it references `FlutterPlatformView`, which does not exist on macOS,
-and `UnityFramework`, and it declares two methods with the same Objective-C
-selector. Any Flutter app depending on both engines fails to build for macOS
-because of it. Untouched here, since Unity could not be tested.
+It did not compile, which broke the macOS build of any app depending on both
+engines. Fixed to the point where both build together, and no further: Unity
+could not be run here, so treat macOS Unity as compiling rather than working.
+
+What was wrong: it conformed to `FlutterPlatformView`, which does not exist on
+macOS and which its factory never needed, since that already returns an
+`NSView`. It named the `UnityFramework` type, which is not available when
+building because the framework is assembled per game and loaded from the
+bundle at runtime. And it declared two methods carrying the same Objective-C
+selector.
+
+The framework is reached through an `@objc protocol` now, so the selectors are
+declared in one place. Get one wrong and it compiles and then fails at runtime
+as an unrecognised selector, so they are worth checking against Unity's own
+header before trusting them.

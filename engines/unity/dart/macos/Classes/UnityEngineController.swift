@@ -21,7 +21,36 @@ import Cocoa
  * - Proper NSView lifecycle management for embedding Unity in Flutter
  * - Error handling with descriptive error events
  */
-public class UnityEngineController: NSObject, FlutterPlatformView {
+/// The part of UnityFramework this controller uses.
+///
+/// The type itself is not available when building: UnityFramework.framework is
+/// assembled per game and loaded from the app bundle at runtime, so naming the
+/// class here would make the plugin impossible to compile without a Unity build
+/// on hand. The instance arrives through the bundle's principal class and is
+/// messaged through this, which is what Objective-C was doing anyway.
+///
+/// Keep the selectors exact. A mismatch here compiles and then fails as an
+/// unrecognised selector at runtime, which is a much worse place to find out.
+@objc protocol UnityFrameworkInterface {
+    @objc func setDataBundleId(_ bundleId: String)
+
+    @objc func runEmbedded(withArgc argc: Int32,
+                           argv: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?,
+                           appLaunchOpts: [AnyHashable: Any]?)
+
+    @objc func appController() -> NSViewController?
+
+    @objc func pause(_ paused: Bool)
+
+    @objc func sendMessageToGO(withName name: String,
+                               functionName: String,
+                               message: String)
+
+    @objc optional func unloadApplication()
+    @objc optional func quitApplication(_ exitCode: Int32)
+}
+
+public class UnityEngineController: NSObject {
 
     // MARK: - Static Active Controller Tracking
 
@@ -198,7 +227,12 @@ public class UnityEngineController: NSObject, FlutterPlatformView {
             }
 
             // Register the Unity framework with the FlutterBridgeRegistry
-            FlutterBridgeRegistry.register(unityFramework: unityFramework)
+            // The registry stores it as an NSObject, which every Unity
+            // framework instance is; the protocol is only how this file talks
+            // to it.
+            if let asObject = unityFramework as? NSObject {
+                FlutterBridgeRegistry.register(unityFramework: asObject)
+            }
 
             // Set up Unity framework
             unityFramework.setDataBundleId("com.unity3d.framework")
@@ -211,8 +245,7 @@ public class UnityEngineController: NSObject, FlutterPlatformView {
             )
 
             // Get Unity's root view
-            if let appController = unityFramework.appController(),
-               let rootView = appController.rootViewController?.view {
+            if let rootView = unityFramework.appController()?.view {
                 self.unityView = rootView
 
                 // Embed Unity view in our container
@@ -325,7 +358,9 @@ public class UnityEngineController: NSObject, FlutterPlatformView {
     // MARK: - Unity Message Handling (called from C bridge)
 
     /// Called from Unity when a message is sent to Flutter
-    @objc public func onUnityMessage(target: String, method: String, data: String) {
+    /// Swift-side convenience. Deliberately not @objc: it would carry the same
+    /// selector as the method below, and two of those on one class is an error.
+    public func onUnityMessage(target: String, method: String, data: String) {
         onUnityMessageWithTarget(target, method: method, data: data)
     }
 
@@ -400,9 +435,9 @@ public class UnityEngineController: NSObject, FlutterPlatformView {
     // - Data/ = game data
     // Pre-load GameAssembly.dylib so UnityPlayer can resolve IL2CPP symbols when the bundle loads.
 
-    private func loadUnityFramework() -> UnityFramework? {
+    private func loadUnityFramework() -> UnityFrameworkInterface? {
         // Try to get from cache first
-        if let cached = FlutterBridgeRegistry.sharedUnityFramework as? UnityFramework {
+        if let cached = FlutterBridgeRegistry.sharedUnityFramework as? UnityFrameworkInterface {
             return cached
         }
 
@@ -431,8 +466,17 @@ public class UnityEngineController: NSObject, FlutterPlatformView {
             return nil
         }
 
-        let getInstance = principalClass.getInstance()
-        return getInstance as? UnityFramework
+        // getInstance is Unity's own class method, so it has to be sent
+        // dynamically too rather than called on a type nothing here declares.
+        let selector = NSSelectorFromString("getInstance")
+        guard let unityClass = principalClass as? NSObject.Type,
+              unityClass.responds(to: selector) else {
+            NSLog("UnityEngineController [macOS]: principal class has no getInstance")
+            return nil
+        }
+
+        let instance = unityClass.perform(selector)?.takeUnretainedValue()
+        return instance as? UnityFrameworkInterface
     }
 
     // MARK: - Cleanup
