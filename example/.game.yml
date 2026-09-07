@@ -24,7 +24,7 @@ engines:
         target_path: ios/UnrealFramework.framework
       
       macos:
-        enabled: false
+        enabled: true
         target_path: macos/UnrealFramework.framework
       
       windows:

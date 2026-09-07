@@ -30,7 +30,9 @@ public class GameframeworkPlugin: NSObject, FlutterPlugin {
       engineType: engineType
     )
 
-    registrar.registerViewFactory(factory, withId: "com.xraph.gameframework/\(engineType)")
+    // register, not registerViewFactory. The Objective-C header declares
+    // registerViewFactory:withId:, and Swift imports it under the shorter name.
+    registrar.register(factory, withId: "com.xraph.gameframework/\(engineType)")
     NSLog("GameframeworkPlugin: registered platform view com.xraph.gameframework/\(engineType)")
   }
 
