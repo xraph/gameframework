@@ -7,7 +7,10 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 
 <p align="center">
   <img src="assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
+  &nbsp;&nbsp;
+  <img src="assets/flutter-unreal-demo.gif" alt="An Unreal Engine 5 scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
 </p>
+<p align="center"><sub>Unity in Flutter&nbsp;&nbsp;·&nbsp;&nbsp;Unreal Engine in Flutter</sub></p>
 
 ---
 
