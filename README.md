@@ -84,7 +84,7 @@ dependencies:
   gameframework: ^0.0.3
   gameframework_unity: ^0.0.4  # If using Unity
   gameframework_stream: ^0.0.3  # If using asset streaming
-  # gameframework_unreal: ^0.0.3  # If using Unreal (WIP)
+  # gameframework_unreal: ^0.0.3  # If using Unreal
 ```
 
 ### Basic Usage
@@ -246,13 +246,15 @@ Game Engine (Unity/Unreal)
 - **Unity:** Android, iOS
 - **Core Framework:** All platforms
 
-### 🚧 Work in Progress
-- **Unity:** Web, macOS, Windows, Linux
+### 🟢 Working (Beta)
 - **Unreal:** Android, iOS
 
+### 🚧 Work in Progress
+- **Unity:** Web, macOS, Windows, Linux
+
 ### 📋 Roadmap
+- Harden Unreal Engine mobile integration
 - Complete Unity desktop & web support
-- Complete Unreal Engine mobile integration
 - Unreal desktop & web support
 - Advanced streaming features
 - Performance optimization tools
@@ -262,8 +264,8 @@ Game Engine (Unity/Unreal)
 
 | Platform | gameframework | Unity | Unreal | Status |
 |----------|--------------|-------|--------|--------|
-| Android  | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
-| iOS      | ✅ Ready     | ✅ Ready | 🚧 WIP | Stable |
+| Android  | ✅ Ready     | ✅ Ready | 🟢 Beta | Stable |
+| iOS      | ✅ Ready     | ✅ Ready | 🟢 Beta | Stable |
 | Web      | ✅ Ready     | ✅ Ready | ⏳ Planned | Stable   |
 | macOS    | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
 | Windows  | ✅ Ready     | 🚧 WIP | ⏳ Planned | Beta   |
