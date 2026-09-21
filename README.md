@@ -5,12 +5,22 @@ A unified, modular framework for embedding multiple game engines (Unity, Unreal 
 [![pub package](https://img.shields.io/pub/v/gameframework.svg)](https://pub.dev/packages/gameframework)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-<p align="center">
-  <img src="assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
-  &nbsp;&nbsp;
-  <img src="assets/flutter-unreal-demo.gif" alt="An Unreal Engine 5 scene running inside a Flutter app, with live Flutter controls driving the game" width="300" />
-</p>
-<p align="center"><sub>Unity in Flutter&nbsp;&nbsp;·&nbsp;&nbsp;Unreal Engine in Flutter</sub></p>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/flutter-unity-demo.gif" alt="A Unity 3D scene running inside a Flutter app, with live Flutter controls driving the game" width="270" />
+    </td>
+    <td width="64">&nbsp;</td>
+    <td align="center">
+      <img src="assets/flutter-unreal-demo.gif" alt="An Unreal Engine 5 scene running inside a Flutter app, with live Flutter controls driving the game" width="270" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Unity</b> in Flutter</sub></td>
+    <td>&nbsp;</td>
+    <td align="center"><sub><b>Unreal Engine</b> in Flutter</sub></td>
+  </tr>
+</table>
 
 ---
 
