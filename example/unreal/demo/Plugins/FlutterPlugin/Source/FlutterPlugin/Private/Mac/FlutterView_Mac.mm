@@ -13,7 +13,19 @@
 
 #include "CoreMinimal.h"
 
-#if PLATFORM_MAC
+// Only in an embedded Mac build, and not merely on Mac.
+//
+// The two symbols this needs, GuardedMain and FCocoaWindow, resolve only in a
+// monolithic game binary. The editor is a modular build where Launch and
+// ApplicationCore are separate dylibs and neither symbol is exported, so
+// compiling this into an editor target fails at link with exactly those two
+// undefined, which in turn breaks cooking for every platform rather than just
+// for Mac.
+//
+// BUILD_EMBEDDED_APP is the right condition rather than a WITH_EDITOR test,
+// because it is already what the project sets to mean "this build embeds the
+// engine", and it is defined only for the Mac and iOS game targets that do.
+#if PLATFORM_MAC && BUILD_EMBEDDED_APP
 
 #include "UnrealBridge.h"
 
@@ -220,4 +232,4 @@ int32_t UnrealBridge_IsViewReady(void)
 
 } // extern "C"
 
-#endif // PLATFORM_MAC
+#endif // PLATFORM_MAC && BUILD_EMBEDDED_APP
