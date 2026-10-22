@@ -41,7 +41,13 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 21
+        // Unreal compiles its Android binary against NDK API 26 ("Compiling
+        // Native 64-bit code with NDK API 'android-26'"), so a host that
+        // declares less than that can install on a device where libUnreal.so
+        // cannot load. Declaring it here rather than in the app means the
+        // manifest merger raises any host that asks for less, and the host does
+        // not have to know why.
+        minSdkVersion 26
         targetSdkVersion 33
     }
 }

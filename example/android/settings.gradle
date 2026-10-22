@@ -23,6 +23,16 @@ plugins {
 }
 
 include ":app"
-// Unity native integration
-include ":unityLibrary"
-project(':unityLibrary').projectDir = file('unityLibrary')
+
+// The engine library modules are produced by "game export" and land here via
+// "game sync", so whether they exist depends on which engines this app has
+// exported. Including one unconditionally makes an app that uses only the other
+// engine fail to configure, which is why both are guarded.
+//
+// app/build.gradle applies the matching dependency the same way.
+["unityLibrary", "unrealLibrary"].each { module ->
+    if (file(module).isDirectory()) {
+        include ":$module"
+        project(":$module").projectDir = file(module)
+    }
+}

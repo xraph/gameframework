@@ -31,6 +31,14 @@ static ANativeWindow* GNativeWindow = nullptr;
 static int32 GSurfaceWidth = 0;
 static int32 GSurfaceHeight = 0;
 
+// The window the engine renders into when it is not the one driving the
+// activity, defined in ApplicationCore's AndroidWindow.cpp and honoured only in
+// a build with USE_ANDROID_STANDALONE, which the project turns on through
+// bEnableASISPlugin. FAndroidWindow::GetHardwareWindow_EventThread returns this
+// in preference to the window it would otherwise have been handed, so setting
+// it is what points the RHI at Flutter's surface.
+extern void* GAndroidWindowOverride;
+
 // ============================================================
 // MARK: - Helper Functions
 // ============================================================
@@ -308,10 +316,17 @@ extern "C"
 	{
 		UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] nativeSetSurface called"));
 
-		// Release previous native window if any
+		// Release previous native window if any.
+		//
+		// The override is dropped first and deliberately. It is read by the
+		// engine's event thread, which is not this one, so releasing the window
+		// while the override still pointed at it would leave that thread a live
+		// pointer to a freed window for as long as it took to get to the clear
+		// further down.
 		if (GNativeWindow != nullptr)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Releasing previous native window"));
+			GAndroidWindowOverride = nullptr;
 			ANativeWindow_release(GNativeWindow);
 			GNativeWindow = nullptr;
 		}
@@ -334,32 +349,26 @@ extern "C"
 				// This is the key integration point - tell Unreal's Android window system
 				// about our external surface
 				
-				// Acquire an additional reference since Unreal will manage this
-				ANativeWindow_acquire(GNativeWindow);
-				
-				// Try to set the hardware window for rendering
-				UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Setting hardware window..."));
-				
-				// Check if window is different from current
-				void* CurrentWindow = FAndroidWindow::GetHardwareWindow_EventThread();
-				if (CurrentWindow != GNativeWindow)
-				{
-					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Calling SetHardwareWindow_EventThread"));
-					
-					// Set the hardware window - this tells Unreal's RHI where to render
-					FAndroidWindow::SetHardwareWindow_EventThread(GNativeWindow);
-					
-					// Set window dimensions to trigger proper initialization
-					FAndroidWindow::SetWindowDimensions_EventThread(GNativeWindow);
-					
-					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Hardware window set: %dx%d"), 
-						GSurfaceWidth, GSurfaceHeight);
-				}
-				else
-				{
-					UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Hardware window already set, updating dimensions"));
-					FAndroidWindow::SetWindowDimensions_EventThread(GNativeWindow);
-				}
+				// Point the engine at this window rather than calling
+				// SetHardwareWindow_EventThread, which is what the previous
+				// version of this did.
+				//
+				// That call is wrong from here twice over. It asserts on
+				// IsInAndroidEventThread, and this runs on whichever thread
+				// Java called in on, which is the platform view's thread and
+				// never the engine's event thread. And the value it writes is
+				// then ignored anyway: with standalone on,
+				// GetHardwareWindow_EventThread returns the override whenever
+				// one is set, so the assignment it performs cannot win.
+				//
+				// The reference taken by ANativeWindow_fromSurface above is the
+				// one this holds while the override points here, and it is
+				// released when the surface is cleared. Nothing acquires a
+				// second one: the engine reads this pointer, it does not own it.
+				GAndroidWindowOverride = GNativeWindow;
+
+				UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] GAndroidWindowOverride set to %p (%dx%d)"),
+					GNativeWindow, GSurfaceWidth, GSurfaceHeight);
 				
 				// Notify FlutterBridge if available
 				if (GFlutterBridgeInstance)
@@ -378,9 +387,11 @@ extern "C"
 			GSurfaceWidth = 0;
 			GSurfaceHeight = 0;
 			
-			// Clear the hardware window
-			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Clearing hardware window"));
-			FAndroidWindow::SetHardwareWindow_EventThread(nullptr);
+			// Already cleared alongside the release above; this keeps the
+			// no-surface path correct on its own rather than by relying on
+			// having entered that branch.
+			UE_LOG(LogTemp, Log, TEXT("[FlutterBridge_Android] Cleared GAndroidWindowOverride"));
+			GAndroidWindowOverride = nullptr;
 			
 			// Notify FlutterBridge if available
 			if (GFlutterBridgeInstance)

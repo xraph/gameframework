@@ -42,7 +42,10 @@ android {
         applicationId = "com.xraph.gameframework.gameframework_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
-        minSdkVersion = flutter.minSdkVersion  // Required by Unity
+        // 26 because Unreal compiles its Android binary against NDK API 26,
+        // and the gameframework_unreal plugin declares that. Unity was happy
+        // with Flutter's default; Unreal is the one raising the floor.
+        minSdkVersion = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode.toInteger()
         versionName = flutterVersionName
@@ -66,5 +69,12 @@ flutter {
 
 dependencies {
     // Unity integration
-    implementation project(':unityLibrary')
+    // Guarded to match settings.gradle: only depend on an engine module that
+    // was actually exported and synced into this project.
+    if (findProject(':unityLibrary') != null) {
+        implementation project(':unityLibrary')
+    }
+    if (findProject(':unrealLibrary') != null) {
+        implementation project(':unrealLibrary')
+    }
 }

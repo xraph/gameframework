@@ -51,6 +51,16 @@ class UnrealEngineController(
     private var surfaceReady = false
     private val isDestroyed = AtomicBoolean(false)
 
+    /**
+     * Owns the engine's event thread and the ASIS startup sequence. The project
+     * module name is what nativeMain asks for, which is the Unreal module rather
+     * than the .so, and it is configurable because a host embedding a different
+     * game has a different one.
+     */
+    private val asisLauncher = UnrealAsisLauncher(
+        (config["projectModule"] as? String) ?: "GameFrameworkProject"
+    )
+
     companion object {
         private const val TAG = "UnrealEngineController"
         const val ENGINE_TYPE = "unreal"
@@ -133,26 +143,18 @@ class UnrealEngineController(
 
         runOnMainThread {
             try {
-                // Try to initialize via GameActivity library mode (optional, may not work)
-                // The main rendering will be handled via FlutterPlugin's nativeSetSurface
-                Log.d(TAG, "Attempting GameActivity library mode initialization...")
-                
-                try {
-                    val gameActivityClass = Class.forName("com.epicgames.unreal.GameActivity")
-                    val initMethod = gameActivityClass.getMethod(
-                        "initializeForLibraryMode",
-                        Context::class.java,
-                        Activity::class.java
-                    )
-                    val hostActivity = activity
-                    if (hostActivity != null) {
-                        val result = initMethod.invoke(null, context, hostActivity) as Boolean
-                        Log.d(TAG, "GameActivity.initializeForLibraryMode returned: $result")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "GameActivity library mode not available: ${e.message}")
-                    // Continue anyway - we'll try with FlutterPlugin's JNI functions
-                }
+                // Start the engine through ASIS.
+                //
+                // What was here reflected on GameActivity.initializeForLibraryMode,
+                // which UE 5.8 does not have. It threw every time, the catch
+                // logged a warning, and the code carried on as though an engine
+                // were coming up.
+                //
+                // start() returns as soon as nativeMain has been dispatched. The
+                // engine is not ready at that point and does not become ready
+                // until it has a window, which arrives from surfaceCreated.
+                Log.d(TAG, "Starting Unreal through ASIS")
+                asisLauncher.start(buildCommandLine())
 
                 // Try to initialize via FlutterPlugin's nativeCreate
                 // This is in libUnreal.so when FlutterPlugin is compiled in
@@ -269,23 +271,21 @@ class UnrealEngineController(
             Log.e(TAG, "Error calling nativeSetSurface: ${e.message}", e)
         }
         
-        // Step 2: ALWAYS call GameActivity.setExternalSurface to start the engine
-        // This calls nativeResumeMainInit which is required to start Unreal's main loop
-        try {
-            val gameActivityClass = Class.forName("com.epicgames.unreal.GameActivity")
-            val setExternalSurfaceMethod = gameActivityClass.getMethod(
-                "setExternalSurface",
-                SurfaceHolder::class.java,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            )
-            setExternalSurfaceMethod.invoke(null, holder, width, height)
-            Log.d(TAG, "GameActivity.setExternalSurface called - engine starting")
-        } catch (e: Exception) {
-            Log.w(TAG, "GameActivity.setExternalSurface failed: ${e.message}")
-        }
-        
-        // Send onLoaded event - the surface is ready
+        // Step 2: hand the window to the engine through ASIS.
+        //
+        // This used to reflect on GameActivity.setExternalSurface, which does
+        // not exist in UE 5.8 and so threw into a catch that logged a warning.
+        // The engine was never started, and onLoaded below was reported anyway.
+        //
+        // nativeSetSurface above has already pointed GAndroidWindowOverride at
+        // this surface, so the window is in place before the command that makes
+        // the engine read it. If the engine has not started yet the launcher
+        // latches this and replays it once nativeMain returns.
+        asisLauncher.postAppCommand(UnrealAsisLauncher.APP_CMD_INIT_WINDOW)
+
+        // onLoaded says a surface exists and the engine has been told about it,
+        // which is not the same as the engine being ready to render. Readiness
+        // arrives separately, from the engine side.
         sendEventToFlutter("onLoaded", null)
     }
     
@@ -296,26 +296,19 @@ class UnrealEngineController(
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         Log.d(TAG, "surfaceChanged: ${width}x${height}, format=$format")
         
+        // The dimensions go to native first so the engine reads the new size
+        // when it processes the resize, rather than the size it started with.
+        // GameActivity.updateExternalSurface, which this used to reflect on, is
+        // another method UE 5.8 does not have.
         try {
-            // Update surface dimensions via GameActivity
-            val gameActivityClass = Class.forName("com.epicgames.unreal.GameActivity")
-            val updateMethod = gameActivityClass.getMethod(
-                "updateExternalSurface",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            )
-            updateMethod.invoke(null, width, height)
-            Log.d(TAG, "Surface dimensions updated via GameActivity")
+            nativeSurfaceChanged(width, height)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.w(TAG, "nativeSurfaceChanged not found in libUnreal.so: ${e.message}")
         } catch (e: Exception) {
-            Log.w(TAG, "Could not update surface via GameActivity: ${e.message}")
-            // Fallback to direct JNI
-            try {
-                nativeSurfaceChanged(width, height)
-                Log.d(TAG, "Fallback: Surface dimensions updated via direct JNI")
-            } catch (ex: Exception) {
-                Log.w(TAG, "Direct JNI fallback also failed: ${ex.message}")
-            }
+            Log.e(TAG, "Error updating surface dimensions: ${e.message}", e)
         }
+
+        asisLauncher.postAppCommand(UnrealAsisLauncher.APP_CMD_WINDOW_RESIZED)
     }
     
     /**
@@ -326,23 +319,30 @@ class UnrealEngineController(
         Log.d(TAG, "surfaceDestroyed: Surface no longer available")
         surfaceReady = false
         
+        // Tell the engine the window is going before dropping it, so it stops
+        // rendering into a surface that is about to become invalid. The old code
+        // reflected on GameActivity.clearExternalSurface, which does not exist,
+        // and only reached the JNI call through the resulting catch.
+        asisLauncher.postAppCommand(UnrealAsisLauncher.APP_CMD_TERM_WINDOW)
+
         try {
-            // Clear surface in GameActivity
-            val gameActivityClass = Class.forName("com.epicgames.unreal.GameActivity")
-            val clearMethod = gameActivityClass.getMethod("clearExternalSurface")
-            clearMethod.invoke(null)
-            Log.d(TAG, "Surface cleared via GameActivity")
+            nativeSetSurface(null)
+            Log.d(TAG, "Surface cleared, GAndroidWindowOverride dropped")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.w(TAG, "nativeSetSurface not found in libUnreal.so: ${e.message}")
         } catch (e: Exception) {
-            Log.w(TAG, "Could not clear surface via GameActivity: ${e.message}")
-            // Fallback to direct JNI
-            try {
-                nativeSetSurface(null)
-                Log.d(TAG, "Fallback: Surface cleared via direct JNI")
-            } catch (ex: Exception) {
-                Log.w(TAG, "Direct JNI fallback also failed: ${ex.message}")
-            }
+            Log.e(TAG, "Error clearing surface: ${e.message}", e)
         }
     }
+
+    /**
+     * Builds the command line handed to nativeSetCommandline before startup.
+     *
+     * Empty is valid and is what the engine ran with during the ASIS spike, so
+     * anything added here is opt-in from Flutter rather than required.
+     */
+    private fun buildCommandLine(): String =
+        (config["commandLine"] as? String) ?: ""
 
     override fun pauseEngine() {
         if (!engineReady || isDestroyed.get()) {
@@ -420,6 +420,10 @@ class UnrealEngineController(
                     nativeQuit()
                 }
                 
+                // Stop the event thread after nativeQuit rather than before,
+                // so the quit itself still has a thread to be delivered on.
+                asisLauncher.shutdown()
+
                 unrealSurfaceView = null
                 unrealView = null
                 surfaceReady = false
